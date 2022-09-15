@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE components PUBLIC "-//DBFLUTE//DTD LastaDi 1.0//EN"
+	"http://dbflute.org/meta/lastadi10.dtd">
+<components namespace="fessCrawler">
+	<component name="playwrightClient"
+		class="org.codelibs.fess.crawler.client.http.PlaywrightClient"
+		instance="prototype">
+		<property name="launchOptions">
+			<component class="com.microsoft.playwright.BrowserType"
+				instance="prototype">
+				<property name="headless">true</property>
+			</component>
+		</property>
+	</component>
+</components>
