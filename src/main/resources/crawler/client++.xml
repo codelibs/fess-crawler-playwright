@@ -6,10 +6,19 @@
 		class="org.codelibs.fess.crawler.client.http.PlaywrightClient"
 		instance="prototype">
 		<property name="launchOptions">
-			<component class="com.microsoft.playwright.BrowserType"
+			<component
+				class="com.microsoft.playwright.BrowserType$LaunchOptions"
 				instance="prototype">
 				<property name="headless">true</property>
 			</component>
 		</property>
+	</component>
+
+	<component name="playwrightClientCreator"
+		class="org.codelibs.fess.crawler.client.http.PlaywrightClientCreator">
+		<postConstruct name="register">
+			<arg>["playwright:http:.*", "playwright:https:.*"]</arg>
+			<arg>"playwrightClient"</arg>
+		</postConstruct>
 	</component>
 </components>

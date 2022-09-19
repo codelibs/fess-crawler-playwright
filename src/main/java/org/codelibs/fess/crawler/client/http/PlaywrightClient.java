@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-import javax.annotation.Resource;
 
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.ObjectPool;
@@ -34,6 +32,7 @@ import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.codelibs.core.exception.IORuntimeException;
+import org.codelibs.core.io.CloseableUtil;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
@@ -64,7 +63,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
-    @Resource
     protected ObjectPool<Page> pagePool;
 
     protected Map<String, String> options = new HashMap<>();
@@ -106,6 +104,24 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         });
     }
 
+    @Override
+    public void close() {
+        CloseableUtil.closeQuietly(pagePool);
+        try {
+            if (browser != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing browser...");
+                }
+                browser.close();
+            }
+        } finally {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Closing Playwright...");
+            }
+            playwright.close();
+        }
+    }
+
     protected BrowserType getBrowserType() {
         if (logger.isDebugEnabled()) {
             logger.debug("Create {}...", browserName);
@@ -126,23 +142,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         options.put(key, value);
     }
 
-    @PreDestroy
-    public void destroy() {
-        try {
-            if (browser != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing browser...");
-                }
-                browser.close();
-            }
-        } finally {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Closing Playwright...");
-            }
-            playwright.close();
-        }
-    }
-
     @Override
     public ResponseData execute(final RequestData request) {
         Page pooledPage = null;
@@ -160,15 +159,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
             });
             page.onDownload(downloadRef::set);
-            page.navigate(url);
+            final Response response = page.navigate(url);
 
             page.waitForLoadState(LoadState.DOMCONTENTLOADED);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Base URL: {}\nContent: {}", url, responseRef.get().url());
+                logger.debug("Base URL: {}\nContent: {}", url, response.url());
             }
 
-            return createResponseData(request, responseRef.get(), null);
+            return createResponseData(request, response, null);
         } catch (final Exception e) {
             for (int i = 0; i < downloadTimeout && (downloadRef.get() == null || responseRef.get() == null); i++) {
                 pooledPage.waitForTimeout(1000);
@@ -290,14 +289,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
         }
         return Constants.UTF_8;
-    }
-
-    public ObjectPool<Page> getPagePool() {
-        return pagePool;
-    }
-
-    public void setPagePool(final ObjectPool<Page> pagePool) {
-        this.pagePool = pagePool;
     }
 
     public void setLaunchOptions(final LaunchOptions launchOptions) {
