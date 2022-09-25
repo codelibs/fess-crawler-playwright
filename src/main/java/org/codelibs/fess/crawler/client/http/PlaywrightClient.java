@@ -81,6 +81,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     @Override
     public void init() {
         super.init();
+        if (logger.isDebugEnabled()) {
+            logger.debug("Initiaizing Playwright...");
+        }
         playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
         browser = getBrowserType().launch(launchOptions);
         pagePool = new GenericObjectPool<>(new BasePooledObjectFactory<Page>() {
@@ -106,11 +109,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     @Override
     public void close() {
+        if (playwright == null) {
+            return;
+        }
         CloseableUtil.closeQuietly(pagePool);
         try {
             if (browser != null) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Closing browser...");
+                    logger.debug("Closing Browser...");
                 }
                 browser.close();
             }
@@ -119,6 +125,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Closing Playwright...");
             }
             playwright.close();
+            playwright = null;
         }
     }
 
@@ -293,6 +300,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     public void setLaunchOptions(final LaunchOptions launchOptions) {
         this.launchOptions = launchOptions;
+    }
+
+    public void setBrowserName(String browserName) {
+        this.browserName = browserName;
+    }
+
+    public void setDownloadTimeout(int downloadTimeout) {
+        this.downloadTimeout = downloadTimeout;
     }
 
 }
