@@ -84,27 +84,35 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         if (logger.isDebugEnabled()) {
             logger.debug("Initiaizing Playwright...");
         }
-        playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
-        browser = getBrowserType().launch(launchOptions);
-        pagePool = new GenericObjectPool<>(new BasePooledObjectFactory<Page>() {
-            @Override
-            public Page create() throws Exception {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("A page instance is created.");
+        try {
+            playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
+            browser = getBrowserType().launch(launchOptions);
+            pagePool = new GenericObjectPool<>(new BasePooledObjectFactory<Page>() {
+                @Override
+                public Page create() throws Exception {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("A page instance is created.");
+                    }
+                    return browser.newPage();
                 }
-                return browser.newPage();
-            }
 
-            @Override
-            public PooledObject<Page> wrap(final Page obj) {
-                return new DefaultPooledObject<>(obj);
-            }
+                @Override
+                public PooledObject<Page> wrap(final Page obj) {
+                    return new DefaultPooledObject<>(obj);
+                }
 
-            @Override
-            public void destroyObject(final PooledObject<Page> p) throws Exception {
-                p.getObject().close();
+                @Override
+                public void destroyObject(final PooledObject<Page> p) throws Exception {
+                    p.getObject().close();
+                }
+            });
+        } catch (Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to create Playwright instance.", e);
             }
-        });
+            close();
+            throw new CrawlerSystemException("Failed to ccreate PlaywrightClient.", e);
+        }
     }
 
     @Override
