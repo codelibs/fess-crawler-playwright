@@ -24,10 +24,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.annotation.PostConstruct;
-
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.core.misc.Tuple3;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
@@ -59,44 +58,56 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected Map<String, String> options = new HashMap<>();
 
-    protected Playwright playwright;
-
-    protected Browser browser;
-
-    protected Page page;
-
     protected String browserName = "chromium";
 
     protected LaunchOptions launchOptions;
 
     protected int downloadTimeout = 15; // 15s
 
-    @PostConstruct
+    private Tuple3<Playwright, Browser, Page> worker;
+
     @Override
-    public void init() {
-        super.init();
+    public synchronized void init() {
+        if (worker != null) {
+            return;
+        }
+
         if (logger.isDebugEnabled()) {
             logger.debug("Initiaizing Playwright...");
         }
+        super.init();
+
+        Playwright playwright = null;
+        Browser browser = null;
+        Page page = null;
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
-            browser = getBrowserType().launch(launchOptions);
+            browser = getBrowserType(playwright).launch(launchOptions);
             page = browser.newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
             }
-            close();
+            close(playwright, browser, page);
             throw new CrawlerSystemException("Failed to ccreate PlaywrightClient.", e);
         }
+
+        worker = new Tuple3<>(playwright, browser, page);
     }
 
     @Override
     public void close() {
-        if (playwright == null) {
+        if (worker == null) {
             return;
         }
+        try {
+            close(worker.getValue1(), worker.getValue2(), worker.getValue3());
+        } finally {
+            worker = null;
+        }
+    }
 
+    protected void close(final Playwright playwright, final Browser browser, final Page page) {
         try {
             try {
                 if (page != null) {
@@ -118,11 +129,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Closing Playwright...");
             }
             playwright.close();
-            playwright = null;
         }
     }
 
-    protected BrowserType getBrowserType() {
+    protected BrowserType getBrowserType(final Playwright playwright) {
         if (logger.isDebugEnabled()) {
             logger.debug("Create {}...", browserName);
         }
@@ -144,12 +154,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     @Override
     public ResponseData execute(final RequestData request) {
+        if (worker == null) {
+            init();
+        }
+
+        final String url = request.getUrl();
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("Accessing {}", url);
+        }
+
+        final Page page = worker.getValue3();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
         synchronized (page) {
             try {
-                final String url = request.getUrl();
-
                 page.onResponse(response -> {
                     if (responseRef.get() == null) {
                         responseRef.set(response);
