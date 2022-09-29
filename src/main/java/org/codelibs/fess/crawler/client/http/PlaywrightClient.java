@@ -26,13 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.PostConstruct;
 
-import org.apache.commons.pool2.BasePooledObjectFactory;
-import org.apache.commons.pool2.ObjectPool;
-import org.apache.commons.pool2.PooledObject;
-import org.apache.commons.pool2.impl.DefaultPooledObject;
-import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.codelibs.core.exception.IORuntimeException;
-import org.codelibs.core.io.CloseableUtil;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
@@ -59,17 +53,17 @@ import com.microsoft.playwright.options.LoadState;
  */
 public class PlaywrightClient extends AbstractCrawlerClient {
 
-    private static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
-
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
-    protected ObjectPool<Page> pagePool;
+    private static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
 
     protected Map<String, String> options = new HashMap<>();
 
     protected Playwright playwright;
 
     protected Browser browser;
+
+    protected Page page;
 
     protected String browserName = "chromium";
 
@@ -87,26 +81,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType().launch(launchOptions);
-            pagePool = new GenericObjectPool<>(new BasePooledObjectFactory<Page>() {
-                @Override
-                public Page create() throws Exception {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("A page instance is created.");
-                    }
-                    return browser.newPage();
-                }
-
-                @Override
-                public PooledObject<Page> wrap(final Page obj) {
-                    return new DefaultPooledObject<>(obj);
-                }
-
-                @Override
-                public void destroyObject(final PooledObject<Page> p) throws Exception {
-                    p.getObject().close();
-                }
-            });
-        } catch (Exception e) {
+            page = browser.newPage();
+        } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
             }
@@ -120,13 +96,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         if (playwright == null) {
             return;
         }
-        CloseableUtil.closeQuietly(pagePool);
+
         try {
-            if (browser != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing Browser...");
+            try {
+                if (page != null) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Closing Page...");
+                    }
+                    page.close();
                 }
-                browser.close();
+            } finally {
+                if (browser != null) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Closing Browser...");
+                    }
+                    browser.close();
+                }
             }
         } finally {
             if (logger.isDebugEnabled()) {
@@ -159,56 +144,37 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     @Override
     public ResponseData execute(final RequestData request) {
-        Page pooledPage = null;
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
-        try {
-            pooledPage = pagePool.borrowObject();
-
-            final String url = request.getUrl();
-            final Page page = pooledPage;
-
-            page.onResponse(response -> {
-                if (responseRef.get() == null) {
-                    responseRef.set(response);
-                }
-            });
-            page.onDownload(downloadRef::set);
-            final Response response = page.navigate(url);
-
-            page.waitForLoadState(LoadState.DOMCONTENTLOADED);
-
-            if (logger.isDebugEnabled()) {
-                logger.debug("Base URL: {}\nContent: {}", url, response.url());
-            }
-
-            return createResponseData(request, response, null);
-        } catch (final Exception e) {
-            for (int i = 0; i < downloadTimeout && (downloadRef.get() == null || responseRef.get() == null); i++) {
-                pooledPage.waitForTimeout(1000);
-            }
-            final Response response = responseRef.get();
-            final Download download = downloadRef.get();
-            if (response != null && download != null) {
-                final ResponseData responseData = createResponseData(request, response, download);
-                if (responseData != null) {
-                    return responseData;
-                }
-            }
+        synchronized (page) {
             try {
-                pagePool.invalidateObject(pooledPage);
-            } catch (final Exception e1) {
-                logger.warn("Failed to close the page.", e1);
-            }
-            pooledPage = null;
-            throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
-        } finally {
-            if (pooledPage != null) {
-                try {
-                    pagePool.returnObject(pooledPage);
-                } catch (final Exception e) {
-                    logger.warn("Failed to return a returned object.", e);
+                final String url = request.getUrl();
+
+                page.onResponse(response -> {
+                    if (responseRef.get() == null) {
+                        responseRef.set(response);
+                    }
+                });
+                page.onDownload(downloadRef::set);
+                final Response response = page.navigate(url);
+
+                page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Base URL: {}\nContent: {}", url, response.url());
                 }
+
+                return createResponseData(request, response, null);
+            } catch (final Exception e) {
+                for (int i = 0; i < downloadTimeout && (downloadRef.get() == null || responseRef.get() == null); i++) {
+                    page.waitForTimeout(1000);
+                }
+                final Response response = responseRef.get();
+                final Download download = downloadRef.get();
+                if (response != null && download != null) {
+                    return createResponseData(request, response, download);
+                }
+                throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
             }
         }
     }
@@ -310,11 +276,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         this.launchOptions = launchOptions;
     }
 
-    public void setBrowserName(String browserName) {
+    public void setBrowserName(final String browserName) {
         this.browserName = browserName;
     }
 
-    public void setDownloadTimeout(int downloadTimeout) {
+    public void setDownloadTimeout(final int downloadTimeout) {
         this.downloadTimeout = downloadTimeout;
     }
 
