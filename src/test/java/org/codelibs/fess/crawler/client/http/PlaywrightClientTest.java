@@ -62,7 +62,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals("GET", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
             assertEquals("text/html", responseData.getMimeType());
-            assertEquals(668, responseData.getContentLength());
+            assertEquals(1051, responseData.getContentLength());
             final String body = new String(InputStreamUtil.getBytes(responseData.getResponseBody()), Constants.UTF_8_CHARSET);
             assertTrue(body.contains("content"));
         } finally {
@@ -100,7 +100,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals("HEAD", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
             assertEquals("text/html", responseData.getMimeType());
-            assertEquals(668, responseData.getContentLength());
+            assertEquals(1051, responseData.getContentLength());
             Thread.sleep(100);
             assertNotNull(responseData.getLastModified());
             assertTrue(responseData.getLastModified().getTime() < SystemUtil.currentTimeMillis());

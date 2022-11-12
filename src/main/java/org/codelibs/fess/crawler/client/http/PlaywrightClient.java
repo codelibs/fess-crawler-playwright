@@ -54,6 +54,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
+    private static final String RENDERED_STATE = "renderedState";
+
     private static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
 
     protected Map<String, String> options = new HashMap<>();
@@ -63,6 +65,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected LaunchOptions launchOptions;
 
     protected int downloadTimeout = 15; // 15s
+
+    protected LoadState renderedState = LoadState.NETWORKIDLE;
 
     private Tuple3<Playwright, Browser, Page> worker;
 
@@ -76,6 +80,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             logger.debug("Initiaizing Playwright...");
         }
         super.init();
+
+        final String renderedStateParam = getInitParameter(RENDERED_STATE, renderedState.name(), String.class);
+        if (renderedStateParam != null) {
+            renderedState = LoadState.valueOf(renderedStateParam);
+        }
 
         Playwright playwright = null;
         Browser browser = null;
@@ -177,13 +186,13 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 page.onDownload(downloadRef::set);
                 final Response response = page.navigate(url);
 
-                page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+                page.waitForLoadState(renderedState);
 
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Base URL: {}\nContent: {}", url, response.url());
+                    logger.debug("Base URL: {}, Response URL: {}", url, response.url());
                 }
 
-                return createResponseData(request, response, null);
+                return createResponseData(page, request, response, null);
             } catch (final Exception e) {
                 for (int i = 0; i < downloadTimeout && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     page.waitForTimeout(1000);
@@ -191,14 +200,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final Response response = responseRef.get();
                 final Download download = downloadRef.get();
                 if (response != null && download != null) {
-                    return createResponseData(request, response, download);
+                    return createResponseData(page, request, response, download);
                 }
                 throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
             }
         }
     }
 
-    private ResponseData createResponseData(final RequestData request, final Response response, final Download download) {
+    private ResponseData createResponseData(final Page page, final RequestData request, final Response response, final Download download) {
         final ResponseData responseData = new ResponseData();
 
         responseData.setUrl(response.url());
@@ -213,7 +222,20 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         response.allHeaders().entrySet().forEach(e -> responseData.addMetaData(e.getKey(), e.getValue()));
 
         if (download == null) {
-            final byte[] body = response.body();
+            byte[] body;
+            try {
+                Thread.sleep(1000L);
+                final String content = page.content();
+                if (logger.isDebugEnabled()) {
+                    logger.debug("content: {}", content);
+                }
+                body = content.getBytes(charSet);
+            } catch (final Exception e) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Could not get a content from page.", e);
+                }
+                body = response.body();
+            }
             responseData.setContentLength(body.length);
             if (Method.HEAD != request.getMethod()) {
                 responseData.setResponseBody(body);
@@ -303,4 +325,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         this.downloadTimeout = downloadTimeout;
     }
 
+    public void setRenderedState(final LoadState loadState) {
+        this.renderedState = loadState;
+    }
 }
