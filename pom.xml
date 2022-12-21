@@ -88,7 +88,7 @@
 		<dependency>
 			<groupId>com.microsoft.playwright</groupId>
 			<artifactId>playwright</artifactId>
-			<version>1.28.0</version>
+			<version>${playwright.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
