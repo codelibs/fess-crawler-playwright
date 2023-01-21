@@ -16,13 +16,14 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.io.File;
+import java.io.UnsupportedEncodingException;
 
 import javax.annotation.Resource;
 
+import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.core.lang.SystemUtil;
-import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
@@ -54,17 +55,30 @@ public class PlaywrightClientTest extends PlainTestCase {
         File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/";
         try {
             server.start();
-            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            assertEquals(200, responseData.getHttpStatusCode());
-            assertEquals("GET", responseData.getMethod());
-            assertEquals("UTF-8", responseData.getCharSet());
-            assertEquals("text/html", responseData.getMimeType());
-            assertEquals(1051, responseData.getContentLength());
-            final String body = new String(InputStreamUtil.getBytes(responseData.getResponseBody()), Constants.UTF_8_CHARSET);
-            assertTrue(body.contains("content"));
+            {
+                final String url = "http://localhost:7070/";
+                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                assertEquals(200, responseData.getHttpStatusCode());
+                assertEquals("GET", responseData.getMethod());
+                assertEquals("UTF-8", responseData.getCharSet());
+                assertEquals("text/html", responseData.getMimeType());
+                final String body = getBodyAsString(responseData);
+                assertTrue(body.contains("content"));
+                assertEquals(668, responseData.getContentLength());
+            }
+            {
+                final String url = "http://localhost:7070/notfound.html";
+                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                assertEquals(404, responseData.getHttpStatusCode());
+                assertEquals("GET", responseData.getMethod());
+                assertEquals("iso-8859-1", responseData.getCharSet());
+                assertEquals("text/html; charset=iso-8859-1", responseData.getMimeType());
+                assertEquals(0, responseData.getContentLength());
+                final String body = getBodyAsString(responseData);
+                assertEquals("", body);
+            }
         } finally {
             server.stop();
         }
@@ -88,6 +102,191 @@ public class PlaywrightClientTest extends PlainTestCase {
         }
     }
 
+    public void test_doGet_text() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.txt";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("text/plain", responseData.getMimeType());
+            assertEquals("This is a test document.", getBodyAsString(responseData).trim());
+            assertEquals(25, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_pdf() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.pdf";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("application/pdf", responseData.getMimeType());
+            assertEquals(7336, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_docx() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.docx";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("text/html", responseData.getMimeType()); // TODO
+            assertEquals(7500, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_epub() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.epub";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("text/html", responseData.getMimeType()); // TODO
+            assertEquals(7416, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_gif() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.gif";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("image/gif", responseData.getMimeType());
+            assertEquals(63, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_jpg() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.jpg";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("image/jpeg", responseData.getMimeType());
+            assertEquals(7118, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_json() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.json";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("text/html", responseData.getMimeType()); // TODO
+            final String body = getBodyAsString(responseData);
+            assertEquals("{\"message\":\"Thisisatestdocument.\"}", body.replaceAll("\\s", ""));
+            assertEquals(39, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_png() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.png";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("image/png", responseData.getMimeType());
+            assertEquals(5484, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_rtf() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.rtf";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("application/rtf", responseData.getMimeType());
+            assertEquals(393, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
+    public void test_doGet_sh() {
+        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
+
+        final String url = "http://localhost:7070/test.sh";
+        try {
+            server.start();
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("GET", responseData.getMethod());
+            assertEquals("UTF-8", responseData.getCharSet());
+            assertEquals("application/x-sh", responseData.getMimeType());
+            final String body = getBodyAsString(responseData);
+            assertEquals("#!/bin/bashecho\"Thisisatestdocument.\"", body.replaceAll("\\s", ""));
+            assertEquals(45, responseData.getContentLength());
+        } finally {
+            server.stop();
+        }
+    }
+
     public void test_doHead() throws Exception {
         File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
@@ -100,12 +299,20 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals("HEAD", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
             assertEquals("text/html", responseData.getMimeType());
-            assertEquals(1051, responseData.getContentLength());
-            Thread.sleep(100);
+            assertEquals(668, responseData.getContentLength());
             assertNotNull(responseData.getLastModified());
             assertTrue(responseData.getLastModified().getTime() < SystemUtil.currentTimeMillis());
         } finally {
             server.stop();
         }
     }
+
+    private String getBodyAsString(final ResponseData responseData) {
+        try {
+            return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());
+        } catch (UnsupportedEncodingException e) {
+            throw new UnsupportedEncodingRuntimeException(e);
+        }
+    }
+
 }

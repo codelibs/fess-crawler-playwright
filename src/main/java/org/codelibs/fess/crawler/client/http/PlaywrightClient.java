@@ -168,11 +168,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         final String url = request.getUrl();
-
-        if (logger.isDebugEnabled()) {
-            logger.debug("Accessing {}", url);
-        }
-
         final Page page = worker.getValue3();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
@@ -184,22 +179,31 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                 });
                 page.onDownload(downloadRef::set);
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Accessing {}", url);
+                }
                 final Response response = page.navigate(url);
 
                 page.waitForLoadState(renderedState);
 
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Base URL: {}, Response URL: {}", url, response.url());
+                    logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
                 }
-
                 return createResponseData(page, request, response, null);
             } catch (final Exception e) {
-                for (int i = 0; i < downloadTimeout && (downloadRef.get() == null || responseRef.get() == null); i++) {
-                    page.waitForTimeout(1000);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Waiting for downloaded file: {}", e.getMessage());
+                }
+                for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
+                    page.waitForTimeout(100L);
                 }
                 final Response response = responseRef.get();
                 final Download download = downloadRef.get();
                 if (response != null && download != null) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Downloaded:  URL: {}", response.url());
+                    }
                     return createResponseData(page, request, response, download);
                 }
                 throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
@@ -210,32 +214,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     private ResponseData createResponseData(final Page page, final RequestData request, final Response response, final Download download) {
         final ResponseData responseData = new ResponseData();
 
-        responseData.setUrl(response.url());
+        final String url = response.url();
+        responseData.setUrl(url);
         responseData.setMethod(request.getMethod().name());
 
         final String charSet = getCharSet(response);
         responseData.setCharSet(charSet);
-        responseData.setHttpStatusCode(getStatusCode(response));
+        final int statusCode = getStatusCode(response);
+        responseData.setHttpStatusCode(statusCode);
         responseData.setLastModified(getLastModified(response));
-        responseData.setMimeType(getContentType(response));
+        final String contentType = getContentType(response);
+        responseData.setMimeType(contentType);
 
         response.allHeaders().entrySet().forEach(e -> responseData.addMetaData(e.getKey(), e.getValue()));
 
-        if (download == null) {
-            byte[] body;
-            try {
-                Thread.sleep(1000L);
-                final String content = page.content();
-                if (logger.isDebugEnabled()) {
-                    logger.debug("content: {}", content);
-                }
-                body = content.getBytes(charSet);
-            } catch (final Exception e) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Could not get a content from page.", e);
-                }
-                body = response.body();
-            }
+        if (statusCode > 400) {
+            responseData.setContentLength(0);
+            responseData.setResponseBody(new byte[0]);
+        } else if (download == null) {
+            final byte[] body = response.body();
             responseData.setContentLength(body.length);
             if (Method.HEAD != request.getMethod()) {
                 responseData.setResponseBody(body);
@@ -246,6 +243,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 download.saveAs(tempFile.toPath());
                 responseData.setContentLength(tempFile.length());
                 responseData.setResponseBody(tempFile, true);
+                if ("text/html".equals(contentType)) {
+                    // TODO replace content-type
+                }
                 download.delete();
             } catch (final IOException e) {
                 throw new IORuntimeException(e);
