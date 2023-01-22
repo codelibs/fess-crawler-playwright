@@ -17,8 +17,7 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
-
-import javax.annotation.Resource;
+import java.util.Optional;
 
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
@@ -26,6 +25,8 @@ import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.core.lang.SystemUtil;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.helper.MimeTypeHelper;
+import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
 import org.dbflute.utflute.core.PlainTestCase;
 
@@ -39,14 +40,19 @@ public class PlaywrightClientTest extends PlainTestCase {
 
     private static boolean headless = true;
 
-    @Resource
     private PlaywrightClient playwrightClient;
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
 
-        playwrightClient = new PlaywrightClient();
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        playwrightClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
         playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(headless));
         playwrightClient.init();
     }
@@ -74,7 +80,7 @@ public class PlaywrightClientTest extends PlainTestCase {
                 assertEquals(404, responseData.getHttpStatusCode());
                 assertEquals("GET", responseData.getMethod());
                 assertEquals("iso-8859-1", responseData.getCharSet());
-                assertEquals("text/html; charset=iso-8859-1", responseData.getMimeType());
+                assertEquals("text/html", responseData.getMimeType());
                 assertEquals(0, responseData.getContentLength());
                 final String body = getBodyAsString(responseData);
                 assertEquals("", body);
@@ -150,7 +156,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals(200, responseData.getHttpStatusCode());
             assertEquals("GET", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
-            assertEquals("text/html", responseData.getMimeType()); // TODO
+            assertEquals("application/vnd.openxmlformats-officedocument.wordprocessingml.document", responseData.getMimeType());
             assertEquals(7500, responseData.getContentLength());
         } finally {
             server.stop();
@@ -168,7 +174,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals(200, responseData.getHttpStatusCode());
             assertEquals("GET", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
-            assertEquals("text/html", responseData.getMimeType()); // TODO
+            assertEquals("application/epub+zip", responseData.getMimeType());
             assertEquals(7416, responseData.getContentLength());
         } finally {
             server.stop();
@@ -222,7 +228,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals(200, responseData.getHttpStatusCode());
             assertEquals("GET", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
-            assertEquals("text/html", responseData.getMimeType()); // TODO
+            assertEquals("application/json", responseData.getMimeType());
             final String body = getBodyAsString(responseData);
             assertEquals("{\"message\":\"Thisisatestdocument.\"}", body.replaceAll("\\s", ""));
             assertEquals(39, responseData.getContentLength());
@@ -305,6 +311,20 @@ public class PlaywrightClientTest extends PlainTestCase {
         } finally {
             server.stop();
         }
+    }
+
+    public void test_filename() throws Exception {
+        assertEquals("test.html", playwrightClient.getFilename("test.html"));
+        assertEquals("test.html", playwrightClient.getFilename("http://host/test.html"));
+        assertEquals("test.html", playwrightClient.getFilename("http://host/test.html?123=abc"));
+        assertEquals("test.html", playwrightClient.getFilename("http://host/test.html?123=abc#xyz"));
+        assertEquals("test.html", playwrightClient.getFilename("http://host/test.html#xyz"));
+        assertEquals("index.html", playwrightClient.getFilename("http://host/"));
+        assertEquals("index.html", playwrightClient.getFilename("http://host/?123=abc"));
+        assertEquals("index.html", playwrightClient.getFilename("http://host/?123=abc#xyz"));
+        assertEquals("index.html", playwrightClient.getFilename("http://host/#xyz"));
+        assertNull(playwrightClient.getFilename(null));
+        assertNull(playwrightClient.getFilename(""));
     }
 
     private String getBodyAsString(final ResponseData responseData) {

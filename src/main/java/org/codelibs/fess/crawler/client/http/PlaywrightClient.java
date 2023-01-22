@@ -15,25 +15,34 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.annotation.Resource;
+
+import org.apache.commons.lang3.StringUtils;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.misc.Tuple3;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
+import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
+import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,9 +63,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
-    private static final String RENDERED_STATE = "renderedState";
+    protected static final String RENDERED_STATE = "renderedState";
 
-    private static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
+    protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
 
     protected Map<String, String> options = new HashMap<>();
 
@@ -68,7 +77,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected LoadState renderedState = LoadState.NETWORKIDLE;
 
-    private Tuple3<Playwright, Browser, Page> worker;
+    protected Tuple3<Playwright, Browser, Page> worker;
+
+    @Resource
+    protected CrawlerContainer crawlerContainer;
 
     @Override
     public synchronized void init() {
@@ -223,17 +235,28 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final int statusCode = getStatusCode(response);
         responseData.setHttpStatusCode(statusCode);
         responseData.setLastModified(getLastModified(response));
-        final String contentType = getContentType(response);
-        responseData.setMimeType(contentType);
 
         response.allHeaders().entrySet().forEach(e -> responseData.addMetaData(e.getKey(), e.getValue()));
 
         if (statusCode > 400) {
             responseData.setContentLength(0);
             responseData.setResponseBody(new byte[0]);
+            responseData.setMimeType(getContentType(response));
         } else if (download == null) {
             final byte[] body = response.body();
             responseData.setContentLength(body.length);
+            getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
+                final String filename = getFilename(url);
+                try (final InputStream in = new ByteArrayInputStream(body)) {
+                    final String contentType = mimeTypeHelper.getContentType(in, filename);
+                    responseData.setMimeType(contentType);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("filename:{} content-type:{}", filename, contentType);
+                    }
+                } catch (final IOException e) {
+                    logger.warn("Could not read from {}", url, e);
+                }
+            });
             if (Method.HEAD != request.getMethod()) {
                 responseData.setResponseBody(body);
             }
@@ -242,10 +265,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final File tempFile = File.createTempFile("fess-crawler-playwright-", ".tmp");
                 download.saveAs(tempFile.toPath());
                 responseData.setContentLength(tempFile.length());
+                getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
+                    final String filename = getFilename(url);
+                    try (final InputStream in = new FileInputStream(tempFile)) {
+                        final String contentType = mimeTypeHelper.getContentType(in, filename);
+                        responseData.setMimeType(contentType);
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("filename:{} content-type:{}", filename, contentType);
+                        }
+                    } catch (final IOException e) {
+                        logger.warn("Could not read {}", tempFile.getAbsolutePath(), e);
+                    }
+                });
                 responseData.setResponseBody(tempFile, true);
-                if ("text/html".equals(contentType)) {
-                    // TODO replace content-type
-                }
                 download.delete();
             } catch (final IOException e) {
                 throw new IORuntimeException(e);
@@ -255,6 +287,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return responseData;
     }
 
+    protected String getFilename(final String url) {
+        if (StringUtil.isBlank(url)) {
+            return null;
+        }
+        final String[] values = StringUtils.splitPreserveAllTokens(url, '/');
+        final String value = values[values.length - 1].split("#")[0].split("\\?")[0];
+        if (StringUtil.isBlank(value)) {
+            return "index.html";
+        }
+        return value;
+    }
+
+    protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+        return Optional.ofNullable(crawlerContainer.getComponent("mimeTypeHelper"));
+    }
+
     /**
      * @param wd
      * @return
@@ -262,7 +310,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     private String getContentType(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
-            return contentType;
+            return contentType.split(";")[0].trim();
         }
         return "text/html";
     }
