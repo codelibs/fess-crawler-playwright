@@ -327,6 +327,12 @@ public class PlaywrightClientTest extends PlainTestCase {
         assertNull(playwrightClient.getFilename(""));
     }
 
+    public void test_parseDate() throws Exception {
+        assertEquals(1674353794000L, playwrightClient.parseDate("Sun, 22 Jan 2023 02:16:34 GMT").getTime());
+        assertNull(playwrightClient.parseDate(null));
+        assertNull(playwrightClient.parseDate(""));
+    }
+
     private String getBodyAsString(final ResponseData responseData) {
         try {
             return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());

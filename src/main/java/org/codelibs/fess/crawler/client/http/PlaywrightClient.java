@@ -24,6 +24,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -65,7 +66,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected static final String RENDERED_STATE = "renderedState";
 
-    protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
+    protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss z";
 
     protected Map<String, String> options = new HashMap<>();
 
@@ -320,13 +321,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return
      */
     private Date getLastModified(final Response response) {
-        final String lastModified = response.headerValue("last-modified");
-        if (StringUtil.isNotBlank(lastModified)) {
+        return parseDate(response.headerValue("last-modified"));
+    }
+
+    protected Date parseDate(final String value) {
+        if (StringUtil.isNotBlank(value)) {
             try {
-                final SimpleDateFormat dateFormat = new SimpleDateFormat(LAST_MODIFIED_FORMAT);
-                return dateFormat.parse(lastModified);
+                final SimpleDateFormat dateFormat = new SimpleDateFormat(LAST_MODIFIED_FORMAT, Locale.ENGLISH);
+                return dateFormat.parse(value);
             } catch (final ParseException e) {
-                logger.warn("Invalid format: " + lastModified, e);
+                logger.warn("Invalid format: " + value, e);
             }
         }
         return null;
