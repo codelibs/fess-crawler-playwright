@@ -337,10 +337,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return Optional.ofNullable(crawlerContainer.getComponent("mimeTypeHelper"));
     }
 
-    /**
-     * @param wd
-     * @return
-     */
     protected String getContentType(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
@@ -349,10 +345,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return "text/html";
     }
 
-    /**
-     * @param wd
-     * @return
-     */
     protected Date getLastModified(final Response response) {
         return parseDate(response.headerValue("last-modified"));
     }
@@ -369,18 +361,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return null;
     }
 
-    /**
-     * @param wd
-     * @return
-     */
     protected int getStatusCode(final Response response) {
         return response.status();
     }
 
-    /**
-     * @param wd
-     * @return
-     */
     protected String getCharSet(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
