@@ -57,36 +57,44 @@ public class PlaywrightClientTest extends PlainTestCase {
         playwrightClient.init();
     }
 
+    @Override
+    protected void tearDown() throws Exception {
+        playwrightClient.close();
+        super.tearDown();
+    }
+
     public void test_doGet() {
         File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        try {
-            server.start();
-            {
-                final String url = "http://localhost:7070/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("GET", responseData.getMethod());
-                assertEquals("UTF-8", responseData.getCharSet());
-                assertEquals("text/html", responseData.getMimeType());
-                final String body = getBodyAsString(responseData);
-                assertTrue(body.contains("content"));
-                assertEquals(668, responseData.getContentLength());
+        for (int i = 0; i < 5; i++) {
+            try {
+                server.start();
+                {
+                    final String url = "http://localhost:7070/";
+                    final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                    assertEquals(200, responseData.getHttpStatusCode());
+                    assertEquals("GET", responseData.getMethod());
+                    assertEquals("UTF-8", responseData.getCharSet());
+                    assertEquals("text/html", responseData.getMimeType());
+                    final String body = getBodyAsString(responseData);
+                    assertTrue(body.contains("content"));
+                    assertEquals(668, responseData.getContentLength());
+                }
+                {
+                    final String url = "http://localhost:7070/notfound.html";
+                    final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                    assertEquals(404, responseData.getHttpStatusCode());
+                    assertEquals("GET", responseData.getMethod());
+                    assertEquals("iso-8859-1", responseData.getCharSet());
+                    assertEquals("text/html", responseData.getMimeType());
+                    assertEquals(0, responseData.getContentLength());
+                    final String body = getBodyAsString(responseData);
+                    assertEquals("", body);
+                }
+            } finally {
+                server.stop();
             }
-            {
-                final String url = "http://localhost:7070/notfound.html";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals("GET", responseData.getMethod());
-                assertEquals("iso-8859-1", responseData.getCharSet());
-                assertEquals("text/html", responseData.getMimeType());
-                assertEquals(0, responseData.getContentLength());
-                final String body = getBodyAsString(responseData);
-                assertEquals("", body);
-            }
-        } finally {
-            server.stop();
         }
     }
 
@@ -340,5 +348,4 @@ public class PlaywrightClientTest extends PlainTestCase {
             throw new UnsupportedEncodingRuntimeException(e);
         }
     }
-
 }

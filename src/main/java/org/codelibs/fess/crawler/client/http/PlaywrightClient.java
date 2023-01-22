@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
@@ -37,13 +38,17 @@ import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.misc.Tuple3;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
+import org.codelibs.fess.crawler.CrawlerContext;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
+import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
+import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -220,14 +225,41 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     return createResponseData(page, request, response, download);
                 }
                 throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
+            } finally {
+                resetPage(page);
             }
         }
     }
 
-    private ResponseData createResponseData(final Page page, final RequestData request, final Response response, final Download download) {
+    protected void resetPage(final Page page) {
+        try {
+            page.navigate("about:blank");
+            page.waitForLoadState(LoadState.LOAD);
+        } catch (final Exception e) {
+            logger.warn("Could not reset a page.", e);
+        }
+    }
+
+    protected ResponseData createResponseData(final Page page, final RequestData request, final Response response,
+            final Download download) {
         final ResponseData responseData = new ResponseData();
 
+        final String originalUrl = request.getUrl();
         final String url = response.url();
+        if (!originalUrl.equals(url)) {
+            CrawlerContext context = CrawlingParameterUtil.getCrawlerContext();
+            if (context != null) {
+                UrlFilter urlFilter = context.getUrlFilter();
+                if (urlFilter != null && !urlFilter.match(url)) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("{} is not a target url:", url);
+                    }
+                    throw new ChildUrlsException(Collections.emptySet(), "#crawledUrlNotTarget");
+                }
+            }
+            logger.info("Crawled URL: {} -> {}", originalUrl, url);
+        }
+
         responseData.setUrl(url);
         responseData.setMethod(request.getMethod().name());
 
@@ -279,9 +311,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                 });
                 responseData.setResponseBody(tempFile, true);
-                download.delete();
             } catch (final IOException e) {
                 throw new IORuntimeException(e);
+            } finally {
+                download.delete();
             }
         }
 
@@ -308,7 +341,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param wd
      * @return
      */
-    private String getContentType(final Response response) {
+    protected String getContentType(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
             return contentType.split(";")[0].trim();
@@ -320,7 +353,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param wd
      * @return
      */
-    private Date getLastModified(final Response response) {
+    protected Date getLastModified(final Response response) {
         return parseDate(response.headerValue("last-modified"));
     }
 
@@ -340,7 +373,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param wd
      * @return
      */
-    private int getStatusCode(final Response response) {
+    protected int getStatusCode(final Response response) {
         return response.status();
     }
 
@@ -348,7 +381,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param wd
      * @return
      */
-    private String getCharSet(final Response response) {
+    protected String getCharSet(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
             final String[] result = StreamUtil.split(contentType, ";").get(stream -> stream.map(s -> {
