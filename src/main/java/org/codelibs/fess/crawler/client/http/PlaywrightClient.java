@@ -28,6 +28,8 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Resource;
@@ -80,6 +82,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected LaunchOptions launchOptions;
 
     protected int downloadTimeout = 15; // 15s
+
+    protected int closeTimeout = 15; // 15s
 
     protected LoadState renderedState = LoadState.NETWORKIDLE;
 
@@ -134,29 +138,54 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
-    protected void close(final Playwright playwright, final Browser browser, final Page page) {
+    protected void closeInBackground(final Runnable closer) {
+        final CountDownLatch latch = new CountDownLatch(1);
         try {
+            final Thread thread = new Thread(() -> {
+                try {
+                    closer.run();
+                } catch (final Exception e) {
+                    logger.warn("Failed to close the playwright instance.", e);
+                }
+                latch.countDown();
+            }, "Playwright-Closer");
+            thread.setDaemon(true);
+            thread.start();
             try {
-                if (page != null) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Closing Page...");
-                    }
-                    page.close();
-                }
-            } finally {
-                if (browser != null) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Closing Browser...");
-                    }
-                    browser.close();
-                }
+                latch.await(closeTimeout, TimeUnit.SECONDS);
+            } catch (final InterruptedException e) {
+                logger.warn("Interrupted to wait a process.", e);
             }
-        } finally {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Closing Playwright...");
-            }
-            playwright.close();
+        } catch (final Exception e) {
+            logger.warn("Failed to close the playwright instance.", e);
         }
+    }
+
+    protected void close(final Playwright playwright, final Browser browser, final Page page) {
+        closeInBackground(() -> {
+            if (page != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing Page...");
+                }
+                page.close();
+            }
+        });
+        closeInBackground(() -> {
+            if (browser != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing Browser...");
+                }
+                browser.close();
+            }
+        });
+        closeInBackground(() -> {
+            if (playwright != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing Playwright...");
+                }
+                playwright.close();
+            }
+        });
     }
 
     protected BrowserType getBrowserType(final Playwright playwright) {
@@ -396,5 +425,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     public void setRenderedState(final LoadState loadState) {
         this.renderedState = loadState;
+    }
+
+    public void setCloseTimeout(final int closeTimeout) {
+        this.closeTimeout = closeTimeout;
     }
 }
