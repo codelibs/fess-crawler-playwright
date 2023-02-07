@@ -306,8 +306,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             responseData.setMimeType(getContentType(response));
         } else if (download == null) {
             final byte[] body = response.body();
-            responseData.setContentLength(body.length);
-            getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
+            final byte[] responseBody = getMimeTypeHelper().map(mimeTypeHelper -> {
                 final String filename = getFilename(url);
                 try (final InputStream in = new ByteArrayInputStream(body)) {
                     final String contentType = mimeTypeHelper.getContentType(in, filename);
@@ -315,12 +314,27 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     if (logger.isDebugEnabled()) {
                         logger.debug("filename:{} content-type:{}", filename, contentType);
                     }
+                    if ("text/html".equals(contentType)) {
+                        try {
+                            final String content = page.content();
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("html content: {}", content);
+                            }
+                            return content.getBytes(charSet);
+                        } catch (final Exception e) {
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("Could not get a content from page.", e);
+                            }
+                        }
+                    }
                 } catch (final IOException e) {
                     logger.warn("Could not read from {}", url, e);
                 }
-            });
+                return body;
+            }).orElse(body);
+            responseData.setContentLength(responseBody.length);
             if (Method.HEAD != request.getMethod()) {
-                responseData.setResponseBody(body);
+                responseData.setResponseBody(responseBody);
             }
         } else {
             try {

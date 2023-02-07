@@ -78,8 +78,8 @@ public class PlaywrightClientTest extends PlainTestCase {
                     assertEquals("UTF-8", responseData.getCharSet());
                     assertEquals("text/html", responseData.getMimeType());
                     final String body = getBodyAsString(responseData);
-                    assertTrue(body.contains("content"));
-                    assertEquals(668, responseData.getContentLength());
+                    assertTrue(body.contains("content page"));
+                    assertEquals(1051, responseData.getContentLength());
                 }
                 {
                     final String url = "http://localhost:7070/notfound.html";
@@ -313,7 +313,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             assertEquals("HEAD", responseData.getMethod());
             assertEquals("UTF-8", responseData.getCharSet());
             assertEquals("text/html", responseData.getMimeType());
-            assertEquals(668, responseData.getContentLength());
+            assertEquals(1051, responseData.getContentLength());
             assertNotNull(responseData.getLastModified());
             assertTrue(responseData.getLastModified().getTime() < SystemUtil.currentTimeMillis());
         } finally {
