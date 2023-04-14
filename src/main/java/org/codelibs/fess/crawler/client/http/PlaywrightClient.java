@@ -34,13 +34,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Resource;
 
+import com.microsoft.playwright.*;
 import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.options.Proxy;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
-import org.codelibs.core.misc.Tuple3;
+import org.codelibs.core.misc.Tuple4;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.CrawlerContext;
@@ -57,13 +58,7 @@ import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.microsoft.playwright.Browser;
-import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.BrowserType.LaunchOptions;
-import com.microsoft.playwright.Download;
-import com.microsoft.playwright.Page;
-import com.microsoft.playwright.Playwright;
-import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.LoadState;
 
 /**
@@ -96,7 +91,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected LoadState renderedState = LoadState.NETWORKIDLE;
 
-    protected Tuple3<Playwright, Browser, Page> worker;
+    protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
     @Resource
     protected CrawlerContainer crawlerContainer;
@@ -122,20 +117,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
         Playwright playwright = null;
         Browser browser = null;
+        BrowserContext browserContext = null;
         Page page = null;
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
+            browserContext = browser.newContext(newContextOptions);
             page = browser.newContext(newContextOptions).newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
             }
-            close(playwright, browser, page);
+            close(playwright, browser, browserContext, page);
             throw new CrawlerSystemException("Failed to ccreate PlaywrightClient.", e);
         }
 
-        worker = new Tuple3<>(playwright, browser, page);
+        worker = new Tuple4<>(playwright, browser, browserContext, page);
     }
 
     @Override
@@ -144,7 +141,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return;
         }
         try {
-            close(worker.getValue1(), worker.getValue2(), worker.getValue3());
+            close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
         } finally {
             worker = null;
         }
@@ -173,13 +170,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
-    protected void close(final Playwright playwright, final Browser browser, final Page page) {
+    protected void close(final Playwright playwright, final Browser browser, final BrowserContext context, final Page page) {
         closeInBackground(() -> {
             if (page != null) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Closing Page...");
                 }
                 page.close();
+            }
+        });
+        closeInBackground(() -> {
+            if (context != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing BrowserContext...");
+                }
+                context.close();
             }
         });
         closeInBackground(() -> {
@@ -227,7 +232,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         final String url = request.getUrl();
-        final Page page = worker.getValue3();
+        final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
         synchronized (page) {
