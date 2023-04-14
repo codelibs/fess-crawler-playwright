@@ -17,13 +17,16 @@ package org.codelibs.fess.crawler.util;
 
 import java.io.File;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.codelibs.core.io.FileUtil;
+import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.mortbay.jetty.Handler;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.handler.DefaultHandler;
 import org.mortbay.jetty.handler.HandlerList;
 import org.mortbay.jetty.handler.ResourceHandler;
+import org.mortbay.jetty.security.SslSocketConnector;
 import org.mortbay.log.Log;
 
 /**
@@ -57,6 +60,29 @@ public class CrawlerWebServer {
         final HandlerList handlers = new HandlerList();
         handlers.setHandlers(new Handler[] { resource_handler, new DefaultHandler() });
         server.setHandler(handlers);
+    }
+
+    /**
+     * Constructor to start the web server with TLS enabled
+     */
+    public CrawlerWebServer(final int port, final File docRoot, final boolean useSelfSignedTls) {
+        this(port, docRoot);
+
+        if (useSelfSignedTls) {
+            final File certFile = ResourceUtil.getResourceAsFile("sslKeystore/selfsigned_keystore.jks");
+            final String certFilePath = certFile.getAbsolutePath();
+
+            // Ssl handler
+            final SslSocketConnector sslSocketConnector = new SslSocketConnector();
+            sslSocketConnector.setKeystore(certFilePath);
+            sslSocketConnector.setTruststore(certFilePath);
+            sslSocketConnector.setPassword("password");
+            sslSocketConnector.setKeyPassword("password");
+            sslSocketConnector.setTrustPassword("password");
+            sslSocketConnector.setPort(port);
+
+            server.setConnectors(ArrayUtils.toArray(sslSocketConnector));
+        }
     }
 
     public void start() {

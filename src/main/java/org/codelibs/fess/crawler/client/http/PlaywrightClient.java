@@ -34,7 +34,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Resource;
 
+import com.microsoft.playwright.Browser.NewContextOptions;
+import com.microsoft.playwright.options.Proxy;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.misc.Tuple3;
@@ -73,6 +76,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected static final String RENDERED_STATE = "renderedState";
 
+    protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
+
+    protected static final String PROXY_BYPASS_PROPERTY = "proxyBypass";
+
     protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss z";
 
     protected Map<String, String> options = new HashMap<>();
@@ -80,6 +87,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected String browserName = "chromium";
 
     protected LaunchOptions launchOptions;
+
+    protected NewContextOptions newContextOptions = new NewContextOptions();
 
     protected int downloadTimeout = 15; // 15s
 
@@ -103,6 +112,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
         super.init();
 
+        // initialize Playwright's browser context
+        this.initNewContextOptions();
+
         final String renderedStateParam = getInitParameter(RENDERED_STATE, renderedState.name(), String.class);
         if (renderedStateParam != null) {
             renderedState = LoadState.valueOf(renderedStateParam);
@@ -114,7 +126,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
-            page = browser.newPage();
+            page = browser.newContext(newContextOptions).newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
@@ -425,6 +437,42 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return Constants.UTF_8;
     }
 
+    /**
+     * Reads configurations from Web UI & pass it to Playwright Context
+     */
+    private void initNewContextOptions() {
+        if (this.newContextOptions == null) {
+            this.newContextOptions = new NewContextOptions();
+        }
+
+        // Check whether to skip SSL certificate checking
+        // Also check ignoreSslCertificate for backward compatibility with HcHttpClient's config
+        final boolean ignoreHttpsErrors = getInitParameter(IGNORE_HTTPS_ERRORS_PROPERTY, false, Boolean.class);
+        final boolean ignoreSslCertificate = getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class);
+
+        if (ignoreHttpsErrors || ignoreSslCertificate) {
+            this.newContextOptions.ignoreHTTPSErrors = true;
+        }
+
+        // append existing proxy configuration
+        final String proxyHost = getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class);
+        final Integer proxyPort = getInitParameter(HcHttpClient.PROXY_PORT_PROPERTY, null, Integer.class);
+        final UsernamePasswordCredentials proxyCredentials =
+                getInitParameter(HcHttpClient.PROXY_CREDENTIALS_PROPERTY, null, UsernamePasswordCredentials.class);
+        final String proxyBypass = getInitParameter(PROXY_BYPASS_PROPERTY, null, String.class);
+
+        if (!StringUtils.isBlank(proxyHost)) {
+            final String proxyAddress = proxyPort == null ? proxyHost : (proxyHost + ":" + proxyPort);
+            final Proxy proxy = new Proxy(proxyAddress);
+            if (proxyCredentials != null) {
+                proxy.setUsername(proxyCredentials.getUserName());
+                proxy.setPassword(proxyCredentials.getPassword());
+            }
+            proxy.setBypass(proxyBypass);
+            this.newContextOptions.setProxy(proxy);
+        }
+    }
+
     public void setLaunchOptions(final LaunchOptions launchOptions) {
         this.launchOptions = launchOptions;
     }
@@ -443,5 +491,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     public void setCloseTimeout(final int closeTimeout) {
         this.closeTimeout = closeTimeout;
+    }
+
+    public void setNewContextOptions(NewContextOptions newContextOptions) {
+        this.newContextOptions = newContextOptions;
     }
 }
