@@ -34,10 +34,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Resource;
 
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.Browser.NewContextOptions;
+import com.microsoft.playwright.options.Proxy;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
-import org.codelibs.core.misc.Tuple3;
+import org.codelibs.core.misc.Tuple4;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.CrawlerContext;
@@ -54,13 +58,7 @@ import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.microsoft.playwright.Browser;
-import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.BrowserType.LaunchOptions;
-import com.microsoft.playwright.Download;
-import com.microsoft.playwright.Page;
-import com.microsoft.playwright.Playwright;
-import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.LoadState;
 
 /**
@@ -73,6 +71,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected static final String RENDERED_STATE = "renderedState";
 
+    protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
+
+    protected static final String PROXY_BYPASS_PROPERTY = "proxyBypass";
+
     protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss z";
 
     protected Map<String, String> options = new HashMap<>();
@@ -81,13 +83,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected LaunchOptions launchOptions;
 
+    protected NewContextOptions newContextOptions = new NewContextOptions();
+
     protected int downloadTimeout = 15; // 15s
 
     protected int closeTimeout = 15; // 15s
 
     protected LoadState renderedState = LoadState.NETWORKIDLE;
 
-    protected Tuple3<Playwright, Browser, Page> worker;
+    protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
     @Resource
     protected CrawlerContainer crawlerContainer;
@@ -103,6 +107,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
         super.init();
 
+        // initialize Playwright's browser context
+        this.initNewContextOptions();
+
         final String renderedStateParam = getInitParameter(RENDERED_STATE, renderedState.name(), String.class);
         if (renderedStateParam != null) {
             renderedState = LoadState.valueOf(renderedStateParam);
@@ -110,20 +117,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
         Playwright playwright = null;
         Browser browser = null;
+        BrowserContext browserContext = null;
         Page page = null;
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
-            page = browser.newPage();
+            browserContext = browser.newContext(newContextOptions);
+            page = browser.newContext(newContextOptions).newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
             }
-            close(playwright, browser, page);
+            close(playwright, browser, browserContext, page);
             throw new CrawlerSystemException("Failed to ccreate PlaywrightClient.", e);
         }
 
-        worker = new Tuple3<>(playwright, browser, page);
+        worker = new Tuple4<>(playwright, browser, browserContext, page);
     }
 
     @Override
@@ -132,7 +141,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return;
         }
         try {
-            close(worker.getValue1(), worker.getValue2(), worker.getValue3());
+            close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
         } finally {
             worker = null;
         }
@@ -161,13 +170,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
-    protected void close(final Playwright playwright, final Browser browser, final Page page) {
+    protected void close(final Playwright playwright, final Browser browser, final BrowserContext context, final Page page) {
         closeInBackground(() -> {
             if (page != null) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Closing Page...");
                 }
                 page.close();
+            }
+        });
+        closeInBackground(() -> {
+            if (context != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Closing BrowserContext...");
+                }
+                context.close();
             }
         });
         closeInBackground(() -> {
@@ -215,7 +232,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         final String url = request.getUrl();
-        final Page page = worker.getValue3();
+        final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
         synchronized (page) {
@@ -425,6 +442,42 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return Constants.UTF_8;
     }
 
+    /**
+     * Reads configurations from Web UI & pass it to Playwright Context
+     */
+    private void initNewContextOptions() {
+        if (this.newContextOptions == null) {
+            this.newContextOptions = new NewContextOptions();
+        }
+
+        // Check whether to skip SSL certificate checking
+        // Also check ignoreSslCertificate for backward compatibility with HcHttpClient's config
+        final boolean ignoreHttpsErrors = getInitParameter(IGNORE_HTTPS_ERRORS_PROPERTY, false, Boolean.class);
+        final boolean ignoreSslCertificate = getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class);
+
+        if (ignoreHttpsErrors || ignoreSslCertificate) {
+            this.newContextOptions.ignoreHTTPSErrors = true;
+        }
+
+        // append existing proxy configuration
+        final String proxyHost = getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class);
+        final Integer proxyPort = getInitParameter(HcHttpClient.PROXY_PORT_PROPERTY, null, Integer.class);
+        final UsernamePasswordCredentials proxyCredentials =
+                getInitParameter(HcHttpClient.PROXY_CREDENTIALS_PROPERTY, null, UsernamePasswordCredentials.class);
+        final String proxyBypass = getInitParameter(PROXY_BYPASS_PROPERTY, null, String.class);
+
+        if (!StringUtils.isBlank(proxyHost)) {
+            final String proxyAddress = proxyPort == null ? proxyHost : (proxyHost + ":" + proxyPort);
+            final Proxy proxy = new Proxy(proxyAddress);
+            if (proxyCredentials != null) {
+                proxy.setUsername(proxyCredentials.getUserName());
+                proxy.setPassword(proxyCredentials.getPassword());
+            }
+            proxy.setBypass(proxyBypass);
+            this.newContextOptions.setProxy(proxy);
+        }
+    }
+
     public void setLaunchOptions(final LaunchOptions launchOptions) {
         this.launchOptions = launchOptions;
     }
@@ -443,5 +496,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     public void setCloseTimeout(final int closeTimeout) {
         this.closeTimeout = closeTimeout;
+    }
+
+    public void setNewContextOptions(NewContextOptions newContextOptions) {
+        this.newContextOptions = newContextOptions;
     }
 }
