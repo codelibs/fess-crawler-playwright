@@ -36,9 +36,9 @@ import org.mortbay.log.Log;
 public class CrawlerWebServer {
     private int port = 8080;
 
-    private File docRoot;
+    private final File docRoot;
 
-    private Server server;
+    private final Server server;
 
     private boolean tempDocRoot = false;
 

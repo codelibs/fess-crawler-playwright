@@ -1,5 +1,10 @@
 package org.codelibs.fess.crawler.client.http;
 
+import java.io.File;
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.Optional;
+
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
@@ -13,11 +18,6 @@ import org.codelibs.fess.crawler.util.CrawlerWebProxy;
 import org.codelibs.fess.crawler.util.CrawlerWebProxy.ProxyAccessStatus;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
 import org.dbflute.utflute.core.PlainTestCase;
-
-import java.io.File;
-import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.Optional;
 
 public class PlaywrightClientProxyTest extends PlainTestCase {
     private CrawlerWebProxy proxyServer;
@@ -100,7 +100,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
     public void test_accessProxy_proxyHostAndPort_correctAuth() {
         // setup server
-        var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
+        final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
         this.crawlerWebServer.start();
 
         this.proxyServer.setPort(3128);
@@ -123,7 +123,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
     public void test_accessProxy_proxyHostAndPort_missingRequiredAuth() {
         // setup server
-        var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
+        final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
         this.crawlerWebServer.start();
 
         this.proxyServer.setPort(3128);
@@ -146,7 +146,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
     public void test_accessProxy_proxyHostAndPort_incorrectAuth() {
         // setup server
-        var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
+        final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$");
         this.crawlerWebServer.start();
 
         this.proxyServer.setPort(3128);
@@ -188,11 +188,11 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals("Proxy server must be untouched", ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
     }
 
-    private static RequestData makeRequestData(String url) {
+    private static RequestData makeRequestData(final String url) {
         return RequestDataBuilder.newRequestData().get().url(url).build();
     }
 
-    private static void assertTextFileIsCorrect(ResponseData responseData) {
+    private static void assertTextFileIsCorrect(final ResponseData responseData) {
         assertEquals(200, responseData.getHttpStatusCode());
         assertEquals("GET", responseData.getMethod());
         assertEquals("UTF-8", responseData.getCharSet());
@@ -204,7 +204,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
     private static String getBodyAsString(final ResponseData responseData) {
         try {
             return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());
-        } catch (UnsupportedEncodingException e) {
+        } catch (final UnsupportedEncodingException e) {
             throw new UnsupportedEncodingRuntimeException(e);
         }
     }

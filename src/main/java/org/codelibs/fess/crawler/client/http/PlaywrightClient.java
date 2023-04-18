@@ -34,9 +34,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Resource;
 
-import com.microsoft.playwright.*;
-import com.microsoft.playwright.Browser.NewContextOptions;
-import com.microsoft.playwright.options.Proxy;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
@@ -58,8 +55,17 @@ import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Browser.NewContextOptions;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.BrowserType.LaunchOptions;
+import com.microsoft.playwright.Download;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.Proxy;
 
 /**
  * @author shinsuke
@@ -293,9 +299,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final String originalUrl = request.getUrl();
         final String url = response.url();
         if (!originalUrl.equals(url)) {
-            CrawlerContext context = CrawlingParameterUtil.getCrawlerContext();
+            final CrawlerContext context = CrawlingParameterUtil.getCrawlerContext();
             if (context != null) {
-                UrlFilter urlFilter = context.getUrlFilter();
+                final UrlFilter urlFilter = context.getUrlFilter();
                 if (urlFilter != null && !urlFilter.match(url)) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("{} is not a target url:", url);
@@ -498,7 +504,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         this.closeTimeout = closeTimeout;
     }
 
-    public void setNewContextOptions(NewContextOptions newContextOptions) {
+    public void setNewContextOptions(final NewContextOptions newContextOptions) {
         this.newContextOptions = newContextOptions;
     }
 }

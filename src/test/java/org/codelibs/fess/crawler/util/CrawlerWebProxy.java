@@ -1,5 +1,15 @@
 package org.codelibs.fess.crawler.util;
 
+import java.io.IOException;
+import java.util.Base64;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -11,15 +21,6 @@ import org.mortbay.jetty.servlet.ServletHolder;
 import org.mortbay.servlet.ProxyServlet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.util.Base64;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A sample single-threaded proxy server (based on Jetty) for testing purposes.
@@ -47,7 +48,7 @@ public class CrawlerWebProxy {
     }
 
     public void setCredentials(final String username, final String password) {
-        var encodedCredentials = encodeCredentials(username, password);
+        final var encodedCredentials = encodeCredentials(username, password);
         this.authHeader.set(encodedCredentials);
     }
 
@@ -72,7 +73,7 @@ public class CrawlerWebProxy {
 
             attachProxyServlet();
             proxyServer.start();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new CrawlerSystemException(e);
         }
     }
@@ -80,7 +81,7 @@ public class CrawlerWebProxy {
     public void stop() {
         try {
             proxyServer.stop();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new CrawlerSystemException(e);
         }
     }
@@ -105,7 +106,7 @@ public class CrawlerWebProxy {
 
     private class CrawlerProxyServlet extends ProxyServlet {
         @Override
-        public void service(ServletRequest req, ServletResponse res) throws ServletException, IOException {
+        public void service(final ServletRequest req, final ServletResponse res) throws ServletException, IOException {
             logger.info("Proxy request received!");
             final String correctAuthHeader = CrawlerWebProxy.this.authHeader.get();
 
@@ -116,8 +117,8 @@ public class CrawlerWebProxy {
                 return;
             }
 
-            if (req instanceof HttpServletRequest httpRequest && res instanceof HttpServletResponse httpResponse) {
-                var requestAuthHeader = httpRequest.getHeader(PROXY_AUTHORIZATION);
+            if (req instanceof final HttpServletRequest httpRequest && res instanceof final HttpServletResponse httpResponse) {
+                final var requestAuthHeader = httpRequest.getHeader(PROXY_AUTHORIZATION);
 
                 if (requestAuthHeader == null) {
                     requireAuth(httpResponse);

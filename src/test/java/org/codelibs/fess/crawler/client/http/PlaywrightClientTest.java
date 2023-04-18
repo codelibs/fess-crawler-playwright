@@ -64,7 +64,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         for (int i = 0; i < 5; i++) {
@@ -99,7 +99,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_download() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/download.zip";
@@ -117,7 +117,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_text() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.txt";
@@ -136,7 +136,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_pdf() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.pdf";
@@ -154,7 +154,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_docx() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.docx";
@@ -172,7 +172,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_epub() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.epub";
@@ -190,7 +190,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_gif() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.gif";
@@ -208,7 +208,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_jpg() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.jpg";
@@ -226,7 +226,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_json() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.json";
@@ -246,7 +246,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_png() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.png";
@@ -264,7 +264,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_rtf() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.rtf";
@@ -282,7 +282,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doGet_sh() {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/test.sh";
@@ -302,7 +302,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     }
 
     public void test_doHead() throws Exception {
-        File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
         final String url = "http://localhost:7070/";
@@ -344,7 +344,7 @@ public class PlaywrightClientTest extends PlainTestCase {
     private String getBodyAsString(final ResponseData responseData) {
         try {
             return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());
-        } catch (UnsupportedEncodingException e) {
+        } catch (final UnsupportedEncodingException e) {
             throw new UnsupportedEncodingRuntimeException(e);
         }
     }
