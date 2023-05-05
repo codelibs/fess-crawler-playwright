@@ -129,7 +129,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
             browserContext = browser.newContext(newContextOptions);
-            page = browser.newContext(newContextOptions).newPage();
+            page = browserContext.newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
