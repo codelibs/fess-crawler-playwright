@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,7 @@ import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.BrowserType.LaunchOptions;
+import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.Download;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
@@ -128,7 +130,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
-            browserContext = browser.newContext(newContextOptions);
+            browserContext = this.createAuthenticatedContext(browser);
             page = browserContext.newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
@@ -482,6 +484,61 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             proxy.setBypass(proxyBypass);
             this.newContextOptions.setProxy(proxy);
         }
+    }
+
+    /**
+     * Creates an authenticated Playwright context, by using Fess's built-in HcHttpClient to do authentication,
+     * then passes its cookies to Playwright.
+     */
+    private BrowserContext createAuthenticatedContext(final Browser browser) {
+        final Authentication[] authentications =
+                getInitParameter(HcHttpClient.BASIC_AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
+
+        if (authentications.length == 0) {
+            return browser.newContext(this.newContextOptions);
+        }
+
+        for (final Authentication authentication : authentications) {
+            if (!isFormConfig(authentication)) {
+                // Use the first non-form auth credentials to fill the browser's credential prompt
+                final String username = authentication.getCredentials().getUserPrincipal().getName();
+                final String password = authentication.getCredentials().getPassword();
+                this.newContextOptions.setHttpCredentials(username, password);
+                break;
+            }
+        }
+
+        final BrowserContext playwrightContext = browser.newContext(this.newContextOptions);
+        try (final var fessHttpClient = new HcHttpClient()) {
+            fessHttpClient.setInitParameterMap(this.initParamMap);
+            fessHttpClient.init();
+            final List<org.apache.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
+            final List<Cookie> playwrightCookies = fessCookies.stream().map(PlaywrightClient::convertFessCookieToPlaywrightCookie).toList();
+            playwrightContext.addCookies(playwrightCookies);
+
+            return playwrightContext;
+        }
+    }
+
+    private static Cookie convertFessCookieToPlaywrightCookie(org.apache.http.cookie.Cookie apacheCookie) {
+        final var playwrightCookie = new Cookie(apacheCookie.getName(), apacheCookie.getValue());
+        playwrightCookie.setDomain(apacheCookie.getDomain());
+        playwrightCookie.setPath(apacheCookie.getPath());
+        playwrightCookie.setSecure(apacheCookie.isSecure());
+
+        // Set expiry time - Apache's cookies use milliseconds as time unit (via Date object),
+        // while Playwright uses seconds.
+        final Date cookieExpiryDate = apacheCookie.getExpiryDate();
+        if (cookieExpiryDate != null) {
+            playwrightCookie.setExpires(cookieExpiryDate.getTime() / 1000.0);
+        }
+
+        return playwrightCookie;
+    }
+
+    private static boolean isFormConfig(final Authentication authentication) {
+        final String authSchemeName = authentication.getAuthScheme().getSchemeName();
+        return StringUtils.equals(authSchemeName, "form");
     }
 
     public void setLaunchOptions(final LaunchOptions launchOptions) {
