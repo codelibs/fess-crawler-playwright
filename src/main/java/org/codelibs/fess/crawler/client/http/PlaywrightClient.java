@@ -61,11 +61,11 @@ import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.BrowserType.LaunchOptions;
-import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.Download;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.Response;
+import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.Proxy;
 
@@ -453,7 +453,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Reads configurations from Web UI & pass it to Playwright Context
      */
-    private void initNewContextOptions() {
+    protected void initNewContextOptions() {
         if (this.newContextOptions == null) {
             this.newContextOptions = new NewContextOptions();
         }
@@ -490,7 +490,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * Creates an authenticated Playwright context, by using Fess's built-in HcHttpClient to do authentication,
      * then passes its cookies to Playwright.
      */
-    private BrowserContext createAuthenticatedContext(final Browser browser) {
+    protected BrowserContext createAuthenticatedContext(final Browser browser) {
         final Authentication[] authentications =
                 getInitParameter(HcHttpClient.BASIC_AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
 
@@ -499,7 +499,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         for (final Authentication authentication : authentications) {
-            if (!isFormConfig(authentication)) {
+            if (!StringUtils.equals(authentication.getAuthScheme().getSchemeName(), "form")) {
                 // Use the first non-form auth credentials to fill the browser's credential prompt
                 final String username = authentication.getCredentials().getUserPrincipal().getName();
                 final String password = authentication.getCredentials().getPassword();
@@ -513,32 +513,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             fessHttpClient.setInitParameterMap(this.initParamMap);
             fessHttpClient.init();
             final List<org.apache.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
-            final List<Cookie> playwrightCookies = fessCookies.stream().map(PlaywrightClient::convertFessCookieToPlaywrightCookie).toList();
+            final List<Cookie> playwrightCookies = fessCookies.stream().map(apacheCookie -> {
+                final var playwrightCookie = new Cookie(apacheCookie.getName(), apacheCookie.getValue());
+                playwrightCookie.setDomain(apacheCookie.getDomain());
+                playwrightCookie.setPath(apacheCookie.getPath());
+                playwrightCookie.setSecure(apacheCookie.isSecure());
+
+                // Set expiry time - Apache's cookies use milliseconds as time unit (via Date object),
+                // while Playwright uses seconds.
+                final Date cookieExpiryDate = apacheCookie.getExpiryDate();
+                if (cookieExpiryDate != null) {
+                    playwrightCookie.setExpires(cookieExpiryDate.getTime() / 1000.0);
+                }
+
+                return playwrightCookie;
+            }).toList();
             playwrightContext.addCookies(playwrightCookies);
 
             return playwrightContext;
         }
-    }
-
-    private static Cookie convertFessCookieToPlaywrightCookie(org.apache.http.cookie.Cookie apacheCookie) {
-        final var playwrightCookie = new Cookie(apacheCookie.getName(), apacheCookie.getValue());
-        playwrightCookie.setDomain(apacheCookie.getDomain());
-        playwrightCookie.setPath(apacheCookie.getPath());
-        playwrightCookie.setSecure(apacheCookie.isSecure());
-
-        // Set expiry time - Apache's cookies use milliseconds as time unit (via Date object),
-        // while Playwright uses seconds.
-        final Date cookieExpiryDate = apacheCookie.getExpiryDate();
-        if (cookieExpiryDate != null) {
-            playwrightCookie.setExpires(cookieExpiryDate.getTime() / 1000.0);
-        }
-
-        return playwrightCookie;
-    }
-
-    private static boolean isFormConfig(final Authentication authentication) {
-        final String authSchemeName = authentication.getAuthScheme().getSchemeName();
-        return StringUtils.equals(authSchemeName, "form");
     }
 
     public void setLaunchOptions(final LaunchOptions launchOptions) {
