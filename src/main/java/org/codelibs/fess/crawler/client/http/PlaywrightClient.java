@@ -451,7 +451,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
-     * Reads configurations from Web UI & pass it to Playwright Context
+     * Reads configurations from Web UI &amp; pass it to Playwright Context
      */
     protected void initNewContextOptions() {
         if (this.newContextOptions == null) {
