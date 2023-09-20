@@ -137,7 +137,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Failed to create Playwright instance.", e);
             }
             close(playwright, browser, browserContext, page);
-            throw new CrawlerSystemException("Failed to ccreate PlaywrightClient.", e);
+            throw new CrawlerSystemException("Failed to create PlaywrightClient.", e);
         }
 
         worker = new Tuple4<>(playwright, browser, browserContext, page);
