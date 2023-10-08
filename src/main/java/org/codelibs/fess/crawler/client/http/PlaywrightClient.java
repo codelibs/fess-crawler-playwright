@@ -168,11 +168,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }, "Playwright-Closer");
             thread.setDaemon(true);
             thread.start();
-            try {
-                latch.await(closeTimeout, TimeUnit.SECONDS);
-            } catch (final InterruptedException e) {
-                logger.warn("Interrupted to wait a process.", e);
+            if (!latch.await(closeTimeout, TimeUnit.SECONDS)) {
+                logger.warn("The close process is timed out.");
             }
+        } catch (final InterruptedException e) {
+            logger.warn("Interrupted to wait a process.", e);
         } catch (final Exception e) {
             logger.warn("Failed to close the playwright instance.", e);
         }
