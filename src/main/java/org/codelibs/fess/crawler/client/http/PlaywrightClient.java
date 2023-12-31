@@ -50,6 +50,7 @@ import org.codelibs.fess.crawler.entity.RequestData.Method;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
@@ -77,6 +78,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
+    private static final Object INITIALIZATION_LOCK = new Object();
+
+    protected static Tuple4<Playwright, Browser, BrowserContext, Page> SHARED_WORKER = null;
+
+    protected static final String SHARED_CLIENT = "sharedClient";
+
     protected static final String RENDERED_STATE = "renderedState";
 
     protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
@@ -91,7 +98,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected LaunchOptions launchOptions;
 
-    protected NewContextOptions newContextOptions = new NewContextOptions();
+    protected NewContextOptions newContextOptions;
 
     protected int downloadTimeout = 15; // 15s
 
@@ -105,23 +112,41 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected CrawlerContainer crawlerContainer;
 
     @Override
-    public synchronized void init() {
-        if (worker != null) {
-            return;
-        }
+    public void init() {
+        synchronized (INITIALIZATION_LOCK) {
+            if (worker != null) {
+                return;
+            }
 
-        if (logger.isDebugEnabled()) {
-            logger.debug("Initiaizing Playwright...");
-        }
-        super.init();
+            if (logger.isDebugEnabled()) {
+                logger.debug("Initiaizing Playwright...");
+            }
+            super.init();
 
+            final String renderedStateParam = getInitParameter(RENDERED_STATE, renderedState.name(), String.class);
+            if (renderedStateParam != null) {
+                renderedState = LoadState.valueOf(renderedStateParam);
+            }
+
+            final Boolean shared = getInitParameter(SHARED_CLIENT, Boolean.FALSE, Boolean.class);
+            if (shared) {
+                if (SHARED_WORKER == null) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Creating a shared Playwright worker...");
+                    }
+                    SHARED_WORKER = createPlaywrightWorker();
+                }
+                logger.info("Use a shared Playwright worker.");
+                worker = SHARED_WORKER;
+            } else {
+                worker = createPlaywrightWorker();
+            }
+        }
+    }
+
+    protected Tuple4<Playwright, Browser, BrowserContext, Page> createPlaywrightWorker() {
         // initialize Playwright's browser context
-        this.initNewContextOptions();
-
-        final String renderedStateParam = getInitParameter(RENDERED_STATE, renderedState.name(), String.class);
-        if (renderedStateParam != null) {
-            renderedState = LoadState.valueOf(renderedStateParam);
-        }
+        final NewContextOptions newContextOptions = initNewContextOptions();
 
         Playwright playwright = null;
         Browser browser = null;
@@ -130,7 +155,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
-            browserContext = this.createAuthenticatedContext(browser);
+            browserContext = this.createAuthenticatedContext(browser, newContextOptions);
             page = browserContext.newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
@@ -140,7 +165,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             throw new CrawlerSystemException("Failed to create PlaywrightClient.", e);
         }
 
-        worker = new Tuple4<>(playwright, browser, browserContext, page);
+        return new Tuple4<>(playwright, browser, browserContext, page);
     }
 
     @Override
@@ -268,7 +293,13 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Waiting for downloaded file: {}", e.getMessage());
                 }
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
-                    page.waitForTimeout(100L);
+                    try {
+                        page.waitForTimeout(100L);
+                    } catch (final Exception e1) {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Failed to wait for page loading.", e1);
+                        }
+                    }
                 }
                 final Response response = responseRef.get();
                 final Download download = downloadRef.get();
@@ -278,7 +309,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                     return createResponseData(page, request, response, download);
                 }
-                throw new CrawlerSystemException("Failed to access " + request.getUrl(), e);
+                throw new CrawlingAccessException("Failed to access " + request.getUrl(), e);
             } finally {
                 resetPage(page);
             }
@@ -453,10 +484,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Reads configurations from Web UI &amp; pass it to Playwright Context
      */
-    protected void initNewContextOptions() {
-        if (this.newContextOptions == null) {
-            this.newContextOptions = new NewContextOptions();
-        }
+    protected NewContextOptions initNewContextOptions() {
+        final NewContextOptions options = newContextOptions != null ? newContextOptions : new NewContextOptions();
 
         // Check whether to skip SSL certificate checking
         // Also check ignoreSslCertificate for backward compatibility with HcHttpClient's config
@@ -464,7 +493,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final boolean ignoreSslCertificate = getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class);
 
         if (ignoreHttpsErrors || ignoreSslCertificate) {
-            this.newContextOptions.ignoreHTTPSErrors = true;
+            options.ignoreHTTPSErrors = true;
         }
 
         // append existing proxy configuration
@@ -482,20 +511,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 proxy.setPassword(proxyCredentials.getPassword());
             }
             proxy.setBypass(proxyBypass);
-            this.newContextOptions.setProxy(proxy);
+            options.setProxy(proxy);
         }
+        return options;
     }
 
     /**
      * Creates an authenticated Playwright context, by using Fess's built-in HcHttpClient to do authentication,
      * then passes its cookies to Playwright.
      */
-    protected BrowserContext createAuthenticatedContext(final Browser browser) {
+    protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
         final Authentication[] authentications =
                 getInitParameter(HcHttpClient.BASIC_AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
 
         if (authentications.length == 0) {
-            return browser.newContext(this.newContextOptions);
+            return browser.newContext(newContextOptions);
         }
 
         for (final Authentication authentication : authentications) {
@@ -503,12 +533,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 // Use the first non-form auth credentials to fill the browser's credential prompt
                 final String username = authentication.getCredentials().getUserPrincipal().getName();
                 final String password = authentication.getCredentials().getPassword();
-                this.newContextOptions.setHttpCredentials(username, password);
+                newContextOptions.setHttpCredentials(username, password);
                 break;
             }
         }
 
-        final BrowserContext playwrightContext = browser.newContext(this.newContextOptions);
+        final BrowserContext playwrightContext = browser.newContext(newContextOptions);
         try (final var fessHttpClient = new HcHttpClient()) {
             fessHttpClient.setInitParameterMap(this.initParamMap);
             fessHttpClient.init();
