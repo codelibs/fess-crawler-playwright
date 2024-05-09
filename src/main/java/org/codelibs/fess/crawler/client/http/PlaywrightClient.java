@@ -522,7 +522,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
         final Authentication[] authentications =
-                getInitParameter(HcHttpClient.BASIC_AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
+                getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
 
         if (authentications.length == 0) {
             return browser.newContext(newContextOptions);
