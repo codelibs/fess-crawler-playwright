@@ -155,7 +155,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         try {
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
             browser = getBrowserType(playwright).launch(launchOptions);
-            browserContext = this.createAuthenticatedContext(browser, newContextOptions);
+            browserContext = createAuthenticatedContext(browser, newContextOptions);
             page = browserContext.newPage();
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
@@ -469,7 +469,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         if (StringUtil.isNotBlank(contentType)) {
             final String[] result = StreamUtil.split(contentType, ";").get(stream -> stream.map(s -> {
                 final String[] values = s.split("=");
-                if ((values.length == 2) && "charset".equalsIgnoreCase(values[0].trim())) {
+                if (values.length == 2 && "charset".equalsIgnoreCase(values[0].trim())) {
                     return values[1].trim();
                 }
                 return null;
@@ -504,7 +504,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final String proxyBypass = getInitParameter(PROXY_BYPASS_PROPERTY, null, String.class);
 
         if (!StringUtils.isBlank(proxyHost)) {
-            final String proxyAddress = proxyPort == null ? proxyHost : (proxyHost + ":" + proxyPort);
+            final String proxyAddress = proxyPort == null ? proxyHost : proxyHost + ":" + proxyPort;
             final Proxy proxy = new Proxy(proxyAddress);
             if (proxyCredentials != null) {
                 proxy.setUsername(proxyCredentials.getUserName());
@@ -540,7 +540,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
         final BrowserContext playwrightContext = browser.newContext(newContextOptions);
         try (final var fessHttpClient = new HcHttpClient()) {
-            fessHttpClient.setInitParameterMap(this.initParamMap);
+            fessHttpClient.setInitParameterMap(initParamMap);
             fessHttpClient.init();
             final List<org.apache.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
             final List<Cookie> playwrightCookies = fessCookies.stream().map(apacheCookie -> {
@@ -577,7 +577,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     public void setRenderedState(final LoadState loadState) {
-        this.renderedState = loadState;
+        renderedState = loadState;
     }
 
     public void setCloseTimeout(final int closeTimeout) {
