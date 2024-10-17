@@ -33,8 +33,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.annotation.Resource;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
@@ -69,6 +67,8 @@ import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.Proxy;
+
+import jakarta.annotation.Resource;
 
 /**
  * @author shinsuke

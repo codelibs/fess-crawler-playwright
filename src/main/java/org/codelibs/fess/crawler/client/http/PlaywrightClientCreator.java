@@ -17,10 +17,10 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.util.List;
 
-import javax.annotation.Resource;
-
 import org.codelibs.fess.crawler.client.CrawlerClientCreator;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
+
+import jakarta.annotation.Resource;
 
 public class PlaywrightClientCreator {
 
