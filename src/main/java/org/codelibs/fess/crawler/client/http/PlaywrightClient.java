@@ -37,6 +37,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.core.lang.ThreadUtil;
 import org.codelibs.core.misc.Tuple4;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
@@ -86,6 +87,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected static final String RENDERED_STATE = "renderedState";
 
+    protected static final String CONTENT_WAIT_DURATION = "contentWaitDuration";
+
     protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
 
     protected static final String PROXY_BYPASS_PROPERTY = "proxyBypass";
@@ -105,6 +108,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected int closeTimeout = 15; // 15s
 
     protected LoadState renderedState = LoadState.NETWORKIDLE;
+
+    protected long contentWaitDuration = 0;
 
     protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
@@ -127,6 +132,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             if (renderedStateParam != null) {
                 renderedState = LoadState.valueOf(renderedStateParam);
             }
+
+            contentWaitDuration = getInitParameter(CONTENT_WAIT_DURATION, 0L, Long.class);
 
             final Boolean shared = getInitParameter(SHARED_CLIENT, Boolean.FALSE, Boolean.class);
             if (shared) {
@@ -283,6 +290,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final Response response = page.navigate(url);
 
                 page.waitForLoadState(renderedState);
+
+                if (contentWaitDuration > 0L) {
+                    logger.debug("Waiting {} ms before downloading the content.", contentWaitDuration);
+                    ThreadUtil.sleep(contentWaitDuration);
+                }
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
