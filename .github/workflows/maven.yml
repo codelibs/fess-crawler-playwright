@@ -1,37 +1,90 @@
-# This workflow will build a Java project with Maven
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
-
 name: Java CI with Maven
 
 on:
   push:
     branches:
-    - main
-    - "*.x"
+      - "*custom*"
   pull_request:
     branches:
-    - main
-    - "*.x"
+      - "*custom*"
 
 jobs:
   build:
-
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && contains(github.ref_name, 'custom')
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up JDK 17
-      uses: actions/setup-java@v2
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-    - uses: actions/cache@v1
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
-    - name: Install Playwright
-      run: npx playwright install --with-deps
-    - name: Build with Maven
-      run: mvn -B source:jar javadoc:jar package --file pom.xml
+      - uses: actions/checkout@v2
+      - name: Set up JDK 17
+        uses: actions/setup-java@v2
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: actions/cache@v1
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+      - name: Build with Maven
+        run: mvn -B source:jar javadoc:jar package --file pom.xml -Dmaven.test.skip
+
+      - name: Check and Delete Existing Tag
+        id: check-tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          
+          # Get existing tags
+          TAGS=$(gh api /repos/${{ github.repository }}/tags --jq '.[].name' || true)
+  
+          if [[ $TAGS =~ "$TAG_NAME" ]]; then
+            echo "Tag '$TAG_NAME' already exists."
+  
+            # Get existing release
+            RELEASE_ID=$(gh api /repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG_NAME\") | .id" || true)
+  
+             # Delete existing release if any
+            if [[ -n "$RELEASE_ID" ]]; then
+              echo "Deleting existing release with ID: $RELEASE_ID"
+              gh api -X DELETE "/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            fi
+            
+            # Delete existing tag
+            echo "Deleting existing tag: $TAG_NAME"
+            gh api -X DELETE "/repos/${{ github.repository }}/git/refs/tags/$TAG_NAME"
+          else
+            echo "Tag '$TAG_NAME' does not exist. Proceeding to create new release."
+          fi
+  
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Auto Release!
+          draft: false
+          prerelease: true
+    
+      - name: Find JAR file
+        id: find_jar
+        run: |
+            JAR_FILE=$(find target -name "*.jar" -not -name "*-sources.jar" -not -name "*-javadoc.jar")
+            echo "::set-output name=jar_path::$JAR_FILE"
+        
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path:  ${{ steps.find_jar.outputs.jar_path }}
+          asset_name:  ${{ github.ref_name }}.jar
+          asset_content_type: application/java-archive

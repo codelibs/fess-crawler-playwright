@@ -283,6 +283,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final Response response = page.navigate(url);
 
                 page.waitForLoadState(renderedState);
+                page.waitForTimeout(1000L * 15L);
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
@@ -294,7 +295,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     try {
-                        page.waitForTimeout(100L);
+                        page.waitForTimeout(1000L * 15L);
                     } catch (final Exception e1) {
                         if (logger.isDebugEnabled()) {
                             logger.debug("Failed to wait for page loading.", e1);
