@@ -282,7 +282,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
                 final Response response = page.navigate(url);
 
-                page.waitForLoadState(renderedState);
+                page.waitForLoadState(renderedState, timeout=60000);
                 page.waitForTimeout(1000L * 15L);
 
                 if (logger.isDebugEnabled()) {
@@ -295,6 +295,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     try {
+                        page.waitForLoadState(renderedState, timeout=60000);
                         page.waitForTimeout(1000L * 15L);
                     } catch (final Exception e1) {
                         if (logger.isDebugEnabled()) {
