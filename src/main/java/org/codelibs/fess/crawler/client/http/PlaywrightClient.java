@@ -287,9 +287,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                final Response response = page.navigate(url);
-
-                page.waitForLoadState(renderedState);
+                final Response response = page.navigate("https://blogs.oracle.com/oracle4engineer/", 
+        new Page.NavigateOptions().setWaitUntil(renderedState).setTimeout(60000));
+                
+                page.waitForLoadState(renderedState, new Page.WaitForLoadStateOptions().setTimeout(60000));
 
                 if (contentWaitDuration > 0L) {
                     logger.debug("Waiting {} ms before downloading the content.", contentWaitDuration);
