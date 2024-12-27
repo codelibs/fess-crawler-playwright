@@ -287,7 +287,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                final Response response = page.navigate("https://blogs.oracle.com/oracle4engineer/", 
+                final Response response = page.navigate(url, 
         new Page.NavigateOptions().setWaitUntil(renderedState).setTimeout(60000));
                 
                 page.waitForLoadState(renderedState, new Page.WaitForLoadStateOptions().setTimeout(60000));
