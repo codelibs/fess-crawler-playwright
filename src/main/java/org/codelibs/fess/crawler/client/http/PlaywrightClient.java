@@ -67,6 +67,7 @@ import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.WaitUntilState;
 import com.microsoft.playwright.options.Proxy;
 
 import jakarta.annotation.Resource;
@@ -287,9 +288,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                final Response response = page.navigate(url);
-
-                page.waitForLoadState(renderedState);
+                
+                final Response response = page.navigate(url, 
+        new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE).setTimeout(60000));
+                
+                page.waitForLoadState(renderedState, new Page.WaitForLoadStateOptions().setTimeout(60000));
 
                 if (contentWaitDuration > 0L) {
                     logger.debug("Waiting {} ms before downloading the content.", contentWaitDuration);
