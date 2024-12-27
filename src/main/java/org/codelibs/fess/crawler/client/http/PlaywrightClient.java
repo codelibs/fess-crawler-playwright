@@ -75,7 +75,7 @@ import com.microsoft.playwright.options.Proxy;
  *
  */
 public class PlaywrightClient extends AbstractCrawlerClient {
-
+ 
     private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
 
     private static final Object INITIALIZATION_LOCK = new Object();
