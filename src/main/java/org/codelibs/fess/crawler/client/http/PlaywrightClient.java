@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.lang.ThreadUtil;
@@ -53,8 +55,6 @@ import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.Browser.NewContextOptions;
@@ -77,7 +77,7 @@ import jakarta.annotation.Resource;
  */
 public class PlaywrightClient extends AbstractCrawlerClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(PlaywrightClient.class);
+    private static final Logger logger = LogManager.getLogger(PlaywrightClient.class);
 
     private static final Object INITIALIZATION_LOCK = new Object();
 
