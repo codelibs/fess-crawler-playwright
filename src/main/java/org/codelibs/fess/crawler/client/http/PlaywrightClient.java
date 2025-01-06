@@ -95,7 +95,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     protected Map<String, String> options = new HashMap<>();
 
-    protected String browserName = "chromium";
+    // protected String browserName = "chromium";
+    protected String browserName = "webkit";
 
     protected LaunchOptions launchOptions;
 
@@ -281,9 +282,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                final Response response = page.navigate(url, new Page.NavigateOptions().setTimeout(60000).setWaitUntil(WaitUntilState.NETWORKIDLE));
+                final Response response = page.navigate(url);
 
-                page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
+                page.waitForLoadState(renderedState);
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
@@ -295,7 +296,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     try {
-                        page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
+                        // page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
                         page.waitForTimeout(100L);
                     } catch (final Exception e1) {
                         if (logger.isDebugEnabled()) {
