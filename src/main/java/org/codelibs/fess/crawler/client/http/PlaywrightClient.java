@@ -282,9 +282,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                final Response response = page.navigate(url);
+                // final Response response = page.navigate(url);
 
-                page.waitForLoadState(renderedState);
+                // page.waitForLoadState(renderedState);
+                final Response response = page.navigate(url,new Page.NavigateOptions().setTimeout(60000));
+                
+                page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
+
+                if (page.url().equals("https://blogs.oracle.com/oracle4engineer/")) {
+                    Locator viewMoreButton = page.locator("a#viewMorePosts");
+
+                    while (viewMoreButton.isVisible()) {
+                        viewMoreButton.click(new Locator.ClickOptions().setTimeout(60000));
+                        page.waitForLoadState(LoadState.NETWORKIDLE);
+                    }
+                }
+
+                if (page.url().equals("https://docs.aws.amazon.com/ja_jp/")) {
+                    page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("データベース")).click();
+                    page.waitForLoadState(LoadState.NETWORKIDLE);
+                }
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
