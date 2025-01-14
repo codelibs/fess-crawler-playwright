@@ -99,7 +99,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected Map<String, String> options = new HashMap<>();
 
     protected String browserName = "webkit";
-
+    
     protected LaunchOptions launchOptions;
 
     protected NewContextOptions newContextOptions;
