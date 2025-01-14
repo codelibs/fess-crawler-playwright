@@ -28,14 +28,14 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.bio.SocketConnector;
 import org.mortbay.jetty.servlet.ServletHandler;
 import org.mortbay.jetty.servlet.ServletHolder;
 import org.mortbay.servlet.ProxyServlet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A sample single-threaded proxy server (based on Jetty) for testing purposes.
@@ -45,7 +45,7 @@ public class CrawlerWebProxy {
         NOT_ACCESSED, PROMPTED_FOR_CREDENTIALS, ACCESS_GRANTED, ACCESS_DENIED
     }
 
-    private static final Logger logger = LoggerFactory.getLogger(CrawlerWebProxy.class);
+    private static final Logger logger = LogManager.getLogger(CrawlerWebProxy.class);
     public static final String PROXY_AUTHENTICATE = "proxy-authenticate";
     public static final String PROXY_AUTHORIZATION = "proxy-authorization";
 
