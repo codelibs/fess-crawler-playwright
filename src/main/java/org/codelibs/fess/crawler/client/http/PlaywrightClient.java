@@ -292,11 +292,13 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
 
                 if (page.url().equals("https://blogs.oracle.com/oracle4engineer/")) {
+                    int a = 0;
                     Locator viewMoreButton = page.locator("a#viewMorePosts");
 
-                    while (viewMoreButton.isVisible()) {
+                    while (viewMoreButton.isVisible()&& a < 200) {
                         viewMoreButton.click(new Locator.ClickOptions().setTimeout(60000));
                         page.waitForLoadState(LoadState.NETWORKIDLE);
+                        a++;
                     }
                 }
 
