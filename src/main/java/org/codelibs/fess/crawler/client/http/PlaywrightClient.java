@@ -281,26 +281,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 });
                 page.onDownload(downloadRef::set);
 
+                if (url.contains("https://docs.aws.amazon.com/") && url.contains("index.html")) {
+                    url = url.replace("index.html", "Welcome.html");
+                }
+
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
-                // final Response response = page.navigate(url);
-
-                // page.waitForLoadState(renderedState);
-                final Response response = page.navigate(url,new Page.NavigateOptions().setTimeout(60000));
                 
+                // final Response response = page.navigate(url);
+                // page.waitForLoadState(renderedState);
+                
+                final Response response = page.navigate(url,new Page.NavigateOptions().setTimeout(60000));
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
-
-                if (page.url().equals("https://blogs.oracle.com/oracle4engineer/")) {
-                    int a = 0;
-                    Locator viewMoreButton = page.locator("a#viewMorePosts");
-
-                    while (viewMoreButton.isVisible()&& a < 200) {
-                        viewMoreButton.click(new Locator.ClickOptions().setTimeout(60000));
-                        page.waitForLoadState(LoadState.NETWORKIDLE);
-                        a++;
-                    }
-                }
 
                 if (page.url().equals("https://docs.aws.amazon.com/ja_jp/")) {
                     page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("データベース")).click();
