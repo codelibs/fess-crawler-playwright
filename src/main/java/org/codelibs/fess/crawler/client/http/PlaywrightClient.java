@@ -269,8 +269,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         String newurl = request.getUrl();
-        if (newurl.contains("https://docs.aws.amazon.com/") && newurl.contains("index.html")) {
-            newurl = newurl.replace("index.html", "Welcome.html");
+        if (newurl.contains("https://docs.aws.amazon.com/ja_jp") && newurl.contains(".pdf")) {
+            newurl = newurl.replace("ja_jp", "pdfs");
+            System.out.println(newurl);
         }
         final String url = newurl;
         final Page page = worker.getValue4();
