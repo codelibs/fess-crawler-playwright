@@ -268,7 +268,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             init();
         }
 
-        final String url = request.getUrl();
+        String url = request.getUrl();
         final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
