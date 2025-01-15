@@ -268,7 +268,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             init();
         }
 
-        String url = request.getUrl();
+        String newurl = request.getUrl();
+        if (newurl.contains("https://docs.aws.amazon.com/") && newurl.contains("index.html")) {
+            newurl = newurl.replace("index.html", "Welcome.html");
+        }
+        final String url = newurl;
         final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
@@ -289,11 +293,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Accessing {}", url);
                 }
                 
-                // final Response response = page.navigate(url);
-                // page.waitForLoadState(renderedState);
-                
                 final Response response = page.navigate(url,new Page.NavigateOptions().setTimeout(60000));
-                page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
+                page.waitForLoadState(renderedState, new Page.WaitForLoadStateOptions().setTimeout(60000));
 
                 if (page.url().equals("https://docs.aws.amazon.com/ja_jp/")) {
                     page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("データベース")).click();
