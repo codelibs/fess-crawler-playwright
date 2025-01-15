@@ -285,10 +285,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 });
                 page.onDownload(downloadRef::set);
 
-                if (url.contains("https://docs.aws.amazon.com/") && url.contains("index.html")) {
-                    url = url.replace("index.html", "Welcome.html");
-                }
-
                 if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
