@@ -290,7 +290,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Accessing {}", url);
                 }
                 
-                final Response response = page.navigate(url);
+                final Response response = page.navigate(url, new Page.NavigateOptions().setTimeout(60000));
                 
                 // page.waitForLoadState(renderedState);
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
