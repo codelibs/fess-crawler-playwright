@@ -269,11 +269,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         String newurl = request.getUrl();
-        if (newurl.contains("https://docs.aws.amazon.com/ja_jp") && newurl.contains(".pdf")) {
-            newurl = newurl.replace("ja_jp", "pdfs");
-            System.out.println(newurl);
+        if (newurl.contains("https://docs.aws.amazon.com/") && newurl.endsWith(".pdf")) {
+            newurl = newurl.contains("ja_jp") ? newurl.replace("ja_jp", "pdfs") : "https://docs.aws.amazon.com/pdfs" + newurl.substring(27);
         }
-        final String url = newurl.toString();
+        
+        final String url = newurl;
         final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
