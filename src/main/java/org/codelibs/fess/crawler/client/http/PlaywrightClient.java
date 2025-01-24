@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +58,7 @@ import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.microsoft.playwright.*;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.BrowserContext;
@@ -300,11 +302,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     page.waitForLoadState(LoadState.NETWORKIDLE);
                 }
 
-                if (page.url().equals("https://blogs.oracle.com/oracle4engineer/")) {
-                    Locator viewMoreButton = page.locator("a#viewMorePosts");
-                    while (viewMoreButton.isVisible()) {
-                        viewMoreButton.click(new Locator.ClickOptions().setTimeout(60000));
-                        page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
+                if (page.querySelector(".tree-item") != null) {
+                    final List<ElementHandle> rootNodes = page.querySelectorAll("li.tree-item");
+                    for (ElementHandle root : rootNodes) {
+                        expandTree(page, root);
                     }
                 }
                 
@@ -338,6 +339,24 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             } finally {
                 resetPage(page);
             }
+        }
+    }
+
+
+    protected void expandTree(Page page, ElementHandle node) {
+        final ElementHandle expandButton = node.querySelector(".tree-expander-indicator");
+
+        if (expandButton != null) {
+            final String ariaExpanded = node.getAttribute("aria-expanded");
+            if ("false".equals(ariaExpanded)) {
+                expandButton.click();
+                page.waitForTimeout(100);
+            }
+        }
+
+        final List<ElementHandle> childNodes = node.querySelectorAll("ul.tree-group > li.tree-item");
+        for (ElementHandle child : childNodes) {
+            expandTree(page, child);
         }
     }
 
