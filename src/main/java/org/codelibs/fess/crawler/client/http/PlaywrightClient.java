@@ -33,6 +33,8 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Set;
+import java.util.HashSet;
 
 import javax.annotation.Resource;
 
@@ -302,7 +304,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     page.waitForLoadState(LoadState.NETWORKIDLE);
                 }
 
-                if (page.querySelector(".tree-item") != null) {
+                final Set<String> targetUrls = new HashSet<>();
+                targetUrls.add("https://learn.microsoft.com/ja-jp/azure/architecture/databases/");
+                targetUrls.add("https://learn.microsoft.com/ja-jp/cli/azure/");
+                targetUrls.add("https://learn.microsoft.com/ja-jp/rest/api/azure/");
+                
+                if (targetUrls.contains(page.url())) {
                     final List<ElementHandle> rootNodes = page.querySelectorAll("li.tree-item");
                     for (ElementHandle root : rootNodes) {
                         expandTree(page, root);
