@@ -305,9 +305,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
 
                 final Set<String> targetUrls = new HashSet<>();
-                targetUrls.add("https://learn.microsoft.com/ja-jp/azure/architecture/databases/");
-                targetUrls.add("https://learn.microsoft.com/ja-jp/cli/azure/");
-                targetUrls.add("https://learn.microsoft.com/ja-jp/rest/api/azure/");
+                targetUrls.add("https://learn.microsoft.com/ja-jp/rest/api/azure/");                //Azure REST API Reference
+                targetUrls.add("https://learn.microsoft.com/ja-jp/cli/azure/");                     //Azure CLI Documentation
+                targetUrls.add("https://learn.microsoft.com/ja-jp/azure/architecture/databases/");  //Azure Architecture Center
+                
+
                 
                 if (targetUrls.contains(page.url())) {
                     final List<ElementHandle> rootNodes = page.querySelectorAll("li.tree-item");
@@ -351,16 +353,20 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
 
     protected void expandTree(Page page, ElementHandle node) {
+        //各ツリー項目の展開ボタンは `<span class="tree-expander-indicator">` に対応しています。
         final ElementHandle expandButton = node.querySelector(".tree-expander-indicator");
 
+        //展開ボタンが存在するかどうかを確認します。
         if (expandButton != null) {
             final String ariaExpanded = node.getAttribute("aria-expanded");
+            //`aria-expanded` の状態が `false` の場合、それは折りたたみ状態であることを示しています。この場合、`tree-expander-indicator` をクリックする必要があります。
             if ("false".equals(ariaExpanded)) {
                 expandButton.click();
                 page.waitForTimeout(100);
             }
         }
 
+        //子ノードを追加し、逐次的に再帰的に展開します。
         final List<ElementHandle> childNodes = node.querySelectorAll("ul.tree-group > li.tree-item");
         for (ElementHandle child : childNodes) {
             expandTree(page, child);
