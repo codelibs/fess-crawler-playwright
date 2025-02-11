@@ -75,6 +75,36 @@ import jakarta.annotation.Resource;
  * @author shinsuke
  *
  */
+/**
+ * PlaywrightClient is an implementation of AbstractCrawlerClient that uses Playwright to interact with web pages.
+ * It supports various configurations for browser types, context options, and timeouts.
+ *
+ * <p>This client can be configured to use a shared Playwright worker or create a new one for each instance.
+ * It also supports SSL certificate ignoring, proxy settings, and authentication through Fess's built-in HcHttpClient.</p>
+ *
+ * <p>Key features include:</p>
+ * <ul>
+ *   <li>Initialization and configuration of Playwright browser and context</li>
+ *   <li>Execution of HTTP requests and handling of responses</li>
+ *   <li>Support for downloading files and handling different content types</li>
+ *   <li>Graceful closing of Playwright resources</li>
+ * </ul>
+ *
+ * <p>Example usage:</p>
+ * <pre>
+ * {@code
+ * PlaywrightClient client = new PlaywrightClient();
+ * client.setBrowserName("chromium");
+ * client.setDownloadTimeout(30);
+ * client.init();
+ * ResponseData response = client.execute(requestData);
+ * client.close();
+ * }
+ * </pre>
+ *
+ * <p>Note: This class is designed to be used within the Fess framework and relies on its components and configurations.</p>
+ *
+ */
 public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LogManager.getLogger(PlaywrightClient.class);
@@ -124,7 +154,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Initiaizing Playwright...");
+                logger.debug("Initializing Playwright...");
             }
             super.init();
 
@@ -494,7 +524,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
-     * Reads configurations from Web UI &amp; pass it to Playwright Context
+     * Initializes and configures Playwright's NewContextOptions based on the parameters
+     * provided through the Web UI. This method reads various configuration settings such as
+     * SSL certificate ignoring, proxy settings, and authentication credentials, and applies
+     * them to the NewContextOptions object.
+     *
+     * @return a configured NewContextOptions object to be used for creating a Playwright BrowserContext
      */
     protected NewContextOptions initNewContextOptions() {
         final NewContextOptions options = newContextOptions != null ? newContextOptions : new NewContextOptions();

@@ -22,13 +22,49 @@ import org.codelibs.fess.crawler.container.CrawlerContainer;
 
 import jakarta.annotation.Resource;
 
+/**
+ * The PlaywrightClientCreator class is responsible for registering a list of regex patterns
+ * with a specified component name in the crawler container.
+ *
+ * <p>This class uses the CrawlerContainer to retrieve a CrawlerClientCreator component
+ * and registers each regex pattern with the provided component name.</p>
+ *
+ * <p>Dependencies:</p>
+ * <ul>
+ *   <li>{@link CrawlerContainer} - The container that holds the crawler components.</li>
+ * </ul>
+ *
+ * <p>Methods:</p>
+ * <ul>
+ *   <li>{@link #register(List, String)} - Registers a list of regex patterns with a specified component name.</li>
+ * </ul>
+ *
+ * <p>Usage example:</p>
+ * <pre>
+ * {@code
+ * PlaywrightClientCreator creator = new PlaywrightClientCreator();
+ * creator.register(Arrays.asList("regex1", "regex2"), "componentName");
+ * }
+ * </pre>
+ */
 public class PlaywrightClientCreator {
 
     @Resource
     protected CrawlerContainer crawlerContainer;
 
+    /**
+     * Registers a list of regex patterns with a specified component name.
+     *
+     * @param regexList the list of regex patterns to register
+     * @param componentName the name of the component to register the patterns with
+     * @throws IllegalStateException if the CrawlerClientCreator component is not found in the container
+     */
     public void register(final List<String> regexList, final String componentName) {
         final CrawlerClientCreator creator = crawlerContainer.getComponent("crawlerClientCreator");
-        regexList.stream().forEach(regex -> creator.register(regex, componentName));
+        if (creator != null) {
+            regexList.stream().forEach(regex -> creator.register(regex, componentName));
+        } else {
+            throw new IllegalStateException("CrawlerClientCreator component not found in the container.");
+        }
     }
 }
