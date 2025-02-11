@@ -165,7 +165,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
 
         private void addAuthentication(final Authentication authentication) {
             this.authConfigs.add(authentication);
-            initParamMap.put(HcHttpClient.BASIC_AUTHENTICATIONS_PROPERTY, authConfigs.toArray(Authentication[]::new));
+            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authConfigs.toArray(Authentication[]::new));
         }
     }
 }
