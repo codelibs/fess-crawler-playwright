@@ -103,7 +103,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
      protected String browserName = "chromium";
     // protected String browserName = "webkit";
-
+    
     protected LaunchOptions launchOptions;
 
     protected NewContextOptions newContextOptions;
