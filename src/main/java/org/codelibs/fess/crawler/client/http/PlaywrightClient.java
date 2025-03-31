@@ -300,7 +300,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(60000));
 
                 if (page.url().equals("https://docs.aws.amazon.com/ja_jp/")) {
-                    page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("データベース")).click();
+                    page.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setExact(true).setName("データベース")).click();
                     page.waitForLoadState(LoadState.NETWORKIDLE);
                 }
 
