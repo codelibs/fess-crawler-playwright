@@ -1,0 +1,29 @@
+name: Build and Release
+
+     on:
+       push:
+         tags:
+           - 'v*.*.*'  # 仅在推送标签时触发
+
+     jobs:
+       build:
+         runs-on: ubuntu-latest
+
+         steps:
+         - name: Checkout code
+           uses: actions/checkout@v2
+
+         - name: Set up JDK
+           uses: actions/setup-java@v1
+           with:
+             java-version: '11'
+
+         - name: Build with Maven
+           run: mvn clean package
+
+         - name: Create Release
+           uses: softprops/action-gh-release@v1
+           with:
+             files: target/*.jar
+           env:
+             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
