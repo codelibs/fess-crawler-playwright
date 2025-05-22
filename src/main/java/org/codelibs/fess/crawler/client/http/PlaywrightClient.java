@@ -436,7 +436,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
         } else {
             try {
-                final File tempFile = File.createTempFile("fess-crawler-playwright-", ".tmp");
+                final File tempFile = createTempFile("fess-crawler-playwright-", ".tmp", null);
                 download.saveAs(tempFile.toPath());
                 responseData.setContentLength(tempFile.length());
                 getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
@@ -452,8 +452,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                 });
                 responseData.setResponseBody(tempFile, true);
-            } catch (final IOException e) {
-                throw new IORuntimeException(e);
             } finally {
                 download.delete();
             }
