@@ -49,8 +49,20 @@ import jakarta.annotation.Resource;
  */
 public class PlaywrightClientCreator {
 
+    /**
+     * The {@code crawlerContainer} holds the instance of {@link CrawlerContainer} used by this client creator.
+     * It manages the lifecycle and configuration of crawler-related components required for HTTP client operations.
+     */
     @Resource
     protected CrawlerContainer crawlerContainer;
+
+    /**
+     * Default constructor for {@code PlaywrightClientCreator}.
+     * Initializes a new instance of the class with default settings.
+     */
+    public PlaywrightClientCreator() {
+        // Default constructor
+    }
 
     /**
      * Registers a list of regex patterns with a specified component name.
