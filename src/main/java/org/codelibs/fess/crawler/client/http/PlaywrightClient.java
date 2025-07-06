@@ -72,10 +72,6 @@ import com.microsoft.playwright.options.Proxy;
 import jakarta.annotation.Resource;
 
 /**
- * @author shinsuke
- *
- */
-/**
  * PlaywrightClient is an implementation of AbstractCrawlerClient that uses Playwright to interact with web pages.
  * It supports various configurations for browser types, context options, and timeouts.
  *
@@ -111,40 +107,99 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Object INITIALIZATION_LOCK = new Object();
 
+    /**
+     * A shared worker instance for Playwright.
+     */
     protected static Tuple4<Playwright, Browser, BrowserContext, Page> SHARED_WORKER = null;
 
+    /**
+     * The key to specify a shared client.
+     */
     protected static final String SHARED_CLIENT = "sharedClient";
 
+    /**
+     * The key to specify a rendered state.
+     */
     protected static final String RENDERED_STATE = "renderedState";
 
+    /**
+     * The key to specify a content wait duration.
+     */
     protected static final String CONTENT_WAIT_DURATION = "contentWaitDuration";
 
+    /**
+     * The key to specify whether to ignore HTTPS errors.
+     */
     protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
 
+    /**
+     * The key to specify a proxy bypass.
+     */
     protected static final String PROXY_BYPASS_PROPERTY = "proxyBypass";
 
+    /**
+     * The date format for the last modified header.
+     */
     protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss z";
 
+    /**
+     * A map of options for Playwright.
+     */
     protected Map<String, String> options = new HashMap<>();
 
+    /**
+     * The name of the browser to use (e.g., "chromium", "firefox", "webkit").
+     */
     protected String browserName = "chromium";
 
+    /**
+     * The launch options for the browser.
+     */
     protected LaunchOptions launchOptions;
 
+    /**
+     * The options for a new browser context.
+     */
     protected NewContextOptions newContextOptions;
 
+    /**
+     * The timeout for downloading a file, in seconds.
+     */
     protected int downloadTimeout = 15; // 15s
 
+    /**
+     * The timeout for closing the client, in seconds.
+     */
     protected int closeTimeout = 15; // 15s
 
+    /**
+     * The rendered state to wait for.
+     */
     protected LoadState renderedState = LoadState.NETWORKIDLE;
 
+    /**
+     * The duration to wait for the content to be rendered, in milliseconds.
+     */
     protected long contentWaitDuration = 0;
 
+    /**
+     * The worker instance for Playwright.
+     */
     protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
+    /**
+     * The crawler container instance.
+     */
     @Resource
     protected CrawlerContainer crawlerContainer;
+
+    /**
+     * Default constructor for {@code PlaywrightClient}.
+     * Initializes a new instance of the PlaywrightClient class.
+     */
+    public PlaywrightClient() {
+        // Default constructor
+    }
 
     @Override
     public void init() {
@@ -181,6 +236,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Creates a Playwright worker.
+     *
+     * @return A tuple containing the Playwright instance, browser, browser context, and page.
+     */
     protected Tuple4<Playwright, Browser, BrowserContext, Page> createPlaywrightWorker() {
         // initialize Playwright's browser context
         final NewContextOptions newContextOptions = initNewContextOptions();
@@ -217,6 +277,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Closes the Playwright worker in the background.
+     *
+     * @param closer The runnable to close the worker.
+     */
     protected void closeInBackground(final Runnable closer) {
         final CountDownLatch latch = new CountDownLatch(1);
         try {
@@ -240,6 +305,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Closes the Playwright worker.
+     *
+     * @param playwright The Playwright instance.
+     * @param browser The browser instance.
+     * @param context The browser context.
+     * @param page The page.
+     */
     protected void close(final Playwright playwright, final Browser browser, final BrowserContext context, final Page page) {
         closeInBackground(() -> {
             if (page != null) {
@@ -275,6 +348,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         });
     }
 
+    /**
+     * Gets the browser type.
+     *
+     * @param playwright The Playwright instance.
+     * @return The browser type.
+     */
     protected BrowserType getBrowserType(final Playwright playwright) {
         if (logger.isDebugEnabled()) {
             logger.debug("Create {}...", browserName);
@@ -291,6 +370,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         };
     }
 
+    /**
+     * Adds an option.
+     *
+     * @param key The key.
+     * @param value The value.
+     */
     public void addOption(final String key, final String value) {
         options.put(key, value);
     }
@@ -358,6 +443,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Resets the page.
+     *
+     * @param page The page.
+     */
     protected void resetPage(final Page page) {
         try {
             page.navigate("about:blank");
@@ -367,6 +457,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Creates a response data.
+     *
+     * @param page The page.
+     * @param request The request data.
+     * @param response The response.
+     * @param download The download.
+     * @return The response data.
+     */
     protected ResponseData createResponseData(final Page page, final RequestData request, final Response response,
             final Download download) {
         final ResponseData responseData = new ResponseData();
@@ -460,6 +559,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return responseData;
     }
 
+    /**
+     * Gets the filename from the URL.
+     *
+     * @param url The URL.
+     * @return The filename.
+     */
     protected String getFilename(final String url) {
         if (StringUtil.isBlank(url)) {
             return null;
@@ -472,10 +577,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return value;
     }
 
+    /**
+     * Gets the MimeTypeHelper.
+     *
+     * @return The MimeTypeHelper.
+     */
     protected Optional<MimeTypeHelper> getMimeTypeHelper() {
         return Optional.ofNullable(crawlerContainer.getComponent("mimeTypeHelper"));
     }
 
+    /**
+     * Gets the content type from the response.
+     *
+     * @param response The response.
+     * @return The content type.
+     */
     protected String getContentType(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
@@ -484,10 +600,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return "text/html";
     }
 
+    /**
+     * Gets the last modified date from the response.
+     *
+     * @param response The response.
+     * @return The last modified date.
+     */
     protected Date getLastModified(final Response response) {
         return parseDate(response.headerValue("last-modified"));
     }
 
+    /**
+     * Parses a date string.
+     *
+     * @param value The date string.
+     * @return The parsed date.
+     */
     protected Date parseDate(final String value) {
         if (StringUtil.isNotBlank(value)) {
             try {
@@ -500,10 +628,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return null;
     }
 
+    /**
+     * Gets the status code from the response.
+     *
+     * @param response The response.
+     * @return The status code.
+     */
     protected int getStatusCode(final Response response) {
         return response.status();
     }
 
+    /**
+     * Gets the character set from the response.
+     *
+     * @param response The response.
+     * @return The character set.
+     */
     protected String getCharSet(final Response response) {
         final String contentType = response.headerValue("content-type");
         if (StringUtil.isNotBlank(contentType)) {
@@ -564,6 +704,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Creates an authenticated Playwright context, by using Fess's built-in HcHttpClient to do authentication,
      * then passes its cookies to Playwright.
+     *
+     * @param browser The browser instance.
+     * @param newContextOptions The new context options.
+     * @return The browser context.
      */
     protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
         final Authentication[] authentications =
@@ -609,26 +753,56 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
     }
 
+    /**
+     * Sets the launch options.
+     *
+     * @param launchOptions The launch options.
+     */
     public void setLaunchOptions(final LaunchOptions launchOptions) {
         this.launchOptions = launchOptions;
     }
 
+    /**
+     * Sets the browser name.
+     *
+     * @param browserName The browser name.
+     */
     public void setBrowserName(final String browserName) {
         this.browserName = browserName;
     }
 
+    /**
+     * Sets the download timeout.
+     *
+     * @param downloadTimeout The download timeout.
+     */
     public void setDownloadTimeout(final int downloadTimeout) {
         this.downloadTimeout = downloadTimeout;
     }
 
+    /**
+     * Sets the rendered state.
+     *
+     * @param loadState The load state.
+     */
     public void setRenderedState(final LoadState loadState) {
         renderedState = loadState;
     }
 
+    /**
+     * Sets the close timeout.
+     *
+     * @param closeTimeout The close timeout.
+     */
     public void setCloseTimeout(final int closeTimeout) {
         this.closeTimeout = closeTimeout;
     }
 
+    /**
+     * Sets the new context options.
+     *
+     * @param newContextOptions The new context options.
+     */
     public void setNewContextOptions(final NewContextOptions newContextOptions) {
         this.newContextOptions = newContextOptions;
     }
