@@ -34,10 +34,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.lang.ThreadUtil;
 import org.codelibs.core.misc.Tuple4;
@@ -205,6 +205,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     public void init() {
         synchronized (INITIALIZATION_LOCK) {
             if (worker != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Worker already initialized, skipping init()");
+                }
                 return;
             }
 
@@ -220,7 +223,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
             contentWaitDuration = getInitParameter(CONTENT_WAIT_DURATION, 0L, Long.class);
 
+            if (logger.isDebugEnabled()) {
+                logger.debug("Configured renderedState: {}, contentWaitDuration: {}ms", renderedState, contentWaitDuration);
+            }
+
             final Boolean shared = getInitParameter(SHARED_CLIENT, Boolean.FALSE, Boolean.class);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Shared client configuration: {}", shared);
+            }
+
             if (shared) {
                 if (SHARED_WORKER == null) {
                     if (logger.isDebugEnabled()) {
@@ -233,6 +244,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             } else {
                 worker = createPlaywrightWorker();
             }
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Playwright initialization completed successfully");
+            }
         }
     }
 
@@ -242,6 +257,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return A tuple containing the Playwright instance, browser, browser context, and page.
      */
     protected Tuple4<Playwright, Browser, BrowserContext, Page> createPlaywrightWorker() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Creating Playwright worker with browser: {}", browserName);
+        }
+
         // initialize Playwright's browser context
         final NewContextOptions newContextOptions = initNewContextOptions();
 
@@ -250,10 +269,33 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         BrowserContext browserContext = null;
         Page page = null;
         try {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Creating Playwright instance with environment options");
+            }
             playwright = Playwright.create(new Playwright.CreateOptions().setEnv(options));
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Playwright instance created successfully");
+            }
+
             browser = getBrowserType(playwright).launch(launchOptions);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Browser '{}' launched successfully", browserName);
+            }
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Creating authenticated browser context");
+            }
             browserContext = createAuthenticatedContext(browser, newContextOptions);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Creating new page in browser context");
+            }
             page = browserContext.newPage();
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Playwright worker created successfully");
+            }
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to create Playwright instance.", e);
@@ -268,12 +310,24 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     @Override
     public void close() {
         if (worker == null) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Worker already null, nothing to close");
+            }
             return;
         }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("Initiating Playwright worker cleanup");
+        }
+
         try {
             close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
         } finally {
             worker = null;
+        }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("Playwright worker cleanup completed");
         }
     }
 
@@ -285,6 +339,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected void closeInBackground(final Runnable closer) {
         final CountDownLatch latch = new CountDownLatch(1);
         try {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Starting background closer thread");
+            }
+
             final Thread thread = new Thread(() -> {
                 try {
                     closer.run();
@@ -296,7 +354,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             thread.setDaemon(true);
             thread.start();
             if (!latch.await(closeTimeout, TimeUnit.SECONDS)) {
-                logger.warn("The close process is timed out.");
+                logger.warn("The close process timed out after {}s", closeTimeout);
             }
         } catch (final InterruptedException e) {
             logger.warn("Interrupted to wait a process.", e);
@@ -356,9 +414,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected BrowserType getBrowserType(final Playwright playwright) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Create {}...", browserName);
+            logger.debug("Getting browser type for: {}", browserName);
         }
-        return switch (browserName) {
+        final BrowserType browserType = switch (browserName) {
         case "firefox":
             yield playwright.firefox();
         case "webkit":
@@ -368,6 +426,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         default:
             throw new CrawlerSystemException("Unknown browser name: " + browserName);
         };
+        if (logger.isDebugEnabled()) {
+            logger.debug("Successfully obtained {} browser type", browserName);
+        }
+        return browserType;
     }
 
     /**
@@ -383,14 +445,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     @Override
     public ResponseData execute(final RequestData request) {
         if (worker == null) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Worker not initialized, triggering init()");
+            }
             init();
         }
 
         final String url = request.getUrl();
+        if (logger.isDebugEnabled()) {
+            logger.debug("Executing request - URL: {}, Method: {}", url, request.getMethod());
+        }
+
         final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
         synchronized (page) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Acquired page lock for URL: {}", url);
+            }
+
             try {
                 page.onResponse(response -> {
                     if (responseRef.get() == null) {
@@ -400,14 +473,27 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 page.onDownload(downloadRef::set);
 
                 if (logger.isDebugEnabled()) {
+                    logger.debug("Download handler registered for potential file downloads");
+                }
+
+                if (logger.isDebugEnabled()) {
                     logger.debug("Accessing {}", url);
                 }
                 final Response response = page.navigate(url);
 
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Waiting for LoadState: {}", renderedState);
+                }
                 page.waitForLoadState(renderedState);
 
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Page reached LoadState: {}", renderedState);
+                }
+
                 if (contentWaitDuration > 0L) {
-                    logger.debug("Waiting {} ms before downloading the content.", contentWaitDuration);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Waiting {} ms before downloading the content.", contentWaitDuration);
+                    }
                     ThreadUtil.sleep(contentWaitDuration);
                 }
 
@@ -422,6 +508,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     try {
                         page.waitForTimeout(100L);
+                        if (logger.isDebugEnabled() && i % 10 == 0) {
+                            logger.debug("Waiting for download completion (timeout: {}s), waited: {}s", downloadTimeout, i / 10);
+                        }
                     } catch (final Exception e1) {
                         if (logger.isDebugEnabled()) {
                             logger.debug("Failed to wait for page loading.", e1);
@@ -436,8 +525,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                     return createResponseData(page, request, response, download);
                 }
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
+                }
                 throw new CrawlingAccessException("Failed to access " + request.getUrl(), e);
             } finally {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Resetting page to about:blank");
+                }
                 resetPage(page);
             }
         }
@@ -450,8 +545,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected void resetPage(final Page page) {
         try {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Resetting page to blank state");
+            }
             page.navigate("about:blank");
             page.waitForLoadState(LoadState.LOAD);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Page reset completed successfully");
+            }
         } catch (final Exception e) {
             logger.warn("Could not reset a page.", e);
         }
@@ -468,6 +569,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected ResponseData createResponseData(final Page page, final RequestData request, final Response response,
             final Download download) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Creating ResponseData for URL: {}", response.url());
+        }
+
         final ResponseData responseData = new ResponseData();
 
         final String originalUrl = request.getUrl();
@@ -495,9 +600,20 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         responseData.setHttpStatusCode(statusCode);
         responseData.setLastModified(getLastModified(response));
 
+        if (logger.isDebugEnabled()) {
+            logger.debug("Response - StatusCode: {}, CharSet: {}, LastModified: {}", statusCode, charSet, responseData.getLastModified());
+        }
+
         response.allHeaders().entrySet().forEach(e -> responseData.addMetaData(e.getKey(), e.getValue()));
 
+        if (logger.isDebugEnabled()) {
+            logger.debug("Response headers count: {}", response.allHeaders().size());
+        }
+
         if (statusCode > 400) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Error status code {}, returning empty response body", statusCode);
+            }
             responseData.setContentLength(0);
             responseData.setResponseBody(new byte[0]);
             responseData.setMimeType(getContentType(response));
@@ -534,10 +650,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 responseData.setResponseBody(responseBody);
             }
         } else {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Processing file download for URL: {}", url);
+            }
             try {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Saving download to temporary file");
+                }
                 final File tempFile = createTempFile("fess-crawler-playwright-", ".tmp", null);
                 download.saveAs(tempFile.toPath());
                 responseData.setContentLength(tempFile.length());
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Download saved to: {}, size: {} bytes", tempFile.getAbsolutePath(), tempFile.length());
+                }
+
                 getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
                     final String filename = getFilename(url);
                     try (final InputStream in = new FileInputStream(tempFile)) {
@@ -554,6 +681,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             } finally {
                 download.delete();
             }
+        }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("ResponseData created successfully - ContentLength: {}, MimeType: {}", responseData.getContentLength(),
+                    responseData.getMimeType());
         }
 
         return responseData;
@@ -670,6 +802,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return a configured NewContextOptions object to be used for creating a Playwright BrowserContext
      */
     protected NewContextOptions initNewContextOptions() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Initializing NewContextOptions");
+        }
+
         final NewContextOptions options = newContextOptions != null ? newContextOptions : new NewContextOptions();
 
         // Check whether to skip SSL certificate checking
@@ -678,6 +814,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final boolean ignoreSslCertificate = getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class);
 
         if (ignoreHttpsErrors || ignoreSslCertificate) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("SSL certificate validation disabled (ignoreHttpsErrors: {}, ignoreSslCertificate: {})", ignoreHttpsErrors,
+                        ignoreSslCertificate);
+            }
             options.ignoreHTTPSErrors = true;
         }
 
@@ -689,6 +829,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final String proxyBypass = getInitParameter(PROXY_BYPASS_PROPERTY, null, String.class);
 
         if (!StringUtils.isBlank(proxyHost)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Proxy configured - host: {}, port: {}, hasCredentials: {}, bypass: {}", proxyHost, proxyPort,
+                        proxyCredentials != null, proxyBypass);
+            }
             final String proxyAddress = proxyPort == null ? proxyHost : proxyHost + ":" + proxyPort;
             final Proxy proxy = new Proxy(proxyAddress);
             if (proxyCredentials != null) {
@@ -698,6 +842,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             proxy.setBypass(proxyBypass);
             options.setProxy(proxy);
         }
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("NewContextOptions initialized successfully");
+        }
+
         return options;
     }
 
@@ -713,13 +862,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final Authentication[] authentications =
                 getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
 
+        if (logger.isDebugEnabled()) {
+            logger.debug("Processing {} authentication configuration(s)", authentications.length);
+        }
+
         if (authentications.length == 0) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("No authentication configured, creating standard browser context");
+            }
             return browser.newContext(newContextOptions);
         }
 
         for (final Authentication authentication : authentications) {
-            if (!StringUtils.equals(authentication.getAuthScheme().getSchemeName(), "form")) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Processing authentication scheme: {}", authentication.getAuthScheme().getSchemeName());
+            }
+            if (!Strings.CS.equals(authentication.getAuthScheme().getSchemeName(), "form")) {
                 // Use the first non-form auth credentials to fill the browser's credential prompt
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Setting HTTP credentials for non-form authentication");
+                }
                 final String username = authentication.getCredentials().getUserPrincipal().getName();
                 final String password = authentication.getCredentials().getPassword();
                 newContextOptions.setHttpCredentials(username, password);
@@ -727,11 +889,17 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
         }
 
+        if (logger.isDebugEnabled()) {
+            logger.debug("Creating browser context with authentication");
+        }
         final BrowserContext playwrightContext = browser.newContext(newContextOptions);
         try (final var fessHttpClient = new HcHttpClient()) {
             fessHttpClient.setInitParameterMap(initParamMap);
             fessHttpClient.init();
             final List<org.apache.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
+            if (logger.isDebugEnabled()) {
+                logger.debug("Transferring {} cookies from HcHttpClient to Playwright", fessCookies.size());
+            }
             final List<Cookie> playwrightCookies = fessCookies.stream().map(apacheCookie -> {
                 final var playwrightCookie = new Cookie(apacheCookie.getName(), apacheCookie.getValue());
                 playwrightCookie.setDomain(apacheCookie.getDomain());
@@ -748,6 +916,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 return playwrightCookie;
             }).toList();
             playwrightContext.addCookies(playwrightCookies);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Authenticated context created with {} cookies", playwrightCookies.size());
+            }
 
             return playwrightContext;
         }
