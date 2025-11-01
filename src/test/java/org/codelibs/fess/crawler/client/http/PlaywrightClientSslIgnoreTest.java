@@ -61,11 +61,11 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
 
         // evaluate
         try {
-            final String url = "https://localhost:7070/test.txt";
+            final String url = "https://[::1]:7070/test.txt";
             this.playwrightClient.execute(makeRequestData(url));
             fail("No exception thrown.");
         } catch (final CrawlerSystemException e) {
-            assertEquals("Page should be inaccessible with default client settings", "Failed to access https://localhost:7070/test.txt",
+            assertEquals("Page should be inaccessible with default client settings", "Failed to access https://[::1]:7070/test.txt",
                     e.getMessage());
         }
     }
@@ -78,7 +78,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://localhost:7070/test.txt";
+        final String url = "https://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }
@@ -91,7 +91,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://localhost:7070/test.txt";
+        final String url = "https://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }
@@ -105,7 +105,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://localhost:7070/test.txt";
+        final String url = "https://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }

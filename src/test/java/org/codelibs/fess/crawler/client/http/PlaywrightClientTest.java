@@ -71,7 +71,7 @@ public class PlaywrightClientTest extends PlainTestCase {
             try {
                 server.start();
                 {
-                    final String url = "http://localhost:7070/";
+                    final String url = "http://[::1]:7070/";
                     final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
                     assertEquals(200, responseData.getHttpStatusCode());
                     assertEquals("GET", responseData.getMethod());
@@ -82,7 +82,7 @@ public class PlaywrightClientTest extends PlainTestCase {
                     assertEquals(1051, responseData.getContentLength());
                 }
                 {
-                    final String url = "http://localhost:7070/notfound.html";
+                    final String url = "http://[::1]:7070/notfound.html";
                     final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
                     assertEquals(404, responseData.getHttpStatusCode());
                     assertEquals("GET", responseData.getMethod());
@@ -102,7 +102,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/download.zip";
+        final String url = "http://[::1]:7070/download.zip";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -120,7 +120,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -139,7 +139,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.pdf";
+        final String url = "http://[::1]:7070/test.pdf";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -157,7 +157,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.docx";
+        final String url = "http://[::1]:7070/test.docx";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -175,7 +175,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.epub";
+        final String url = "http://[::1]:7070/test.epub";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -193,7 +193,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.gif";
+        final String url = "http://[::1]:7070/test.gif";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -211,7 +211,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.jpg";
+        final String url = "http://[::1]:7070/test.jpg";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -229,7 +229,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.json";
+        final String url = "http://[::1]:7070/test.json";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -249,7 +249,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.png";
+        final String url = "http://[::1]:7070/test.png";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -267,7 +267,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.rtf";
+        final String url = "http://[::1]:7070/test.rtf";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -285,7 +285,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/test.sh";
+        final String url = "http://[::1]:7070/test.sh";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
@@ -305,7 +305,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7070, docRootDir);
 
-        final String url = "http://localhost:7070/";
+        final String url = "http://[::1]:7070/";
         try {
             server.start();
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().head().url(url).build());
