@@ -66,7 +66,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -81,12 +81,12 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setPort(3128);
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("localhost");
+        this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -101,11 +101,11 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setPort(3128);
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("http://localhost:3128");
+        this.playwrightClient.setProxyHost("http://[::1]:3128");
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -122,13 +122,13 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setCredentials(apacheCredentials);
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("localhost");
+        this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
         this.playwrightClient.setProxyCredentials(apacheCredentials);
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -145,12 +145,12 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setCredentials(apacheCredentials);
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("localhost");
+        this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertEquals(407, responseData.getHttpStatusCode());
 
@@ -168,13 +168,13 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setCredentials("user", "password");
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("localhost");
+        this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
         this.playwrightClient.setProxyCredentials(apacheCredentials);
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertEquals(401, responseData.getHttpStatusCode());
 
@@ -189,13 +189,13 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.proxyServer.setPort(3128);
         this.proxyServer.start();
 
-        this.playwrightClient.setProxyHost("localhost");
+        this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
-        this.playwrightClient.setProxyBypass("localhost, 127.0.0.1");
+        this.playwrightClient.setProxyBypass("::1, [::1]");
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://localhost:7070/test.txt";
+        final String url = "http://[::1]:7070/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
