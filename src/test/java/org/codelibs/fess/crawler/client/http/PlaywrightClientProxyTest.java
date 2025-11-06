@@ -191,7 +191,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
         this.playwrightClient.setProxyHost("[::1]");
         this.playwrightClient.setProxyPort("3128");
-        this.playwrightClient.setProxyBypass("::1, [::1]");
+        this.playwrightClient.setProxyBypass("localhost, 127.0.0.1, [::1]");
         this.playwrightClient.init();
 
         // evaluate
