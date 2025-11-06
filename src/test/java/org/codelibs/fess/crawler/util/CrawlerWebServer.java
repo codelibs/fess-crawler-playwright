@@ -26,6 +26,7 @@ import org.mortbay.jetty.Server;
 import org.mortbay.jetty.handler.DefaultHandler;
 import org.mortbay.jetty.handler.HandlerList;
 import org.mortbay.jetty.handler.ResourceHandler;
+import org.mortbay.jetty.nio.SelectChannelConnector;
 import org.mortbay.jetty.security.SslSocketConnector;
 import org.mortbay.log.Log;
 
@@ -51,7 +52,12 @@ public class CrawlerWebServer {
         this.port = port;
         this.docRoot = docRoot;
 
-        server = new Server(port);
+        server = new Server();
+
+        // Bind to all interfaces (dual-stack: IPv4 and IPv6)
+        final SelectChannelConnector connector = new SelectChannelConnector();
+        connector.setPort(port);
+        server.addConnector(connector);
 
         final ResourceHandler resource_handler = new ResourceHandler();
         resource_handler.setWelcomeFiles(new String[] { "index.html" });
@@ -72,7 +78,7 @@ public class CrawlerWebServer {
             final File certFile = ResourceUtil.getResourceAsFile("sslKeystore/selfsigned_keystore.jks");
             final String certFilePath = certFile.getAbsolutePath();
 
-            // Ssl handler
+            // Ssl handler - dual-stack support (IPv4 and IPv6)
             final SslSocketConnector sslSocketConnector = new SslSocketConnector();
             sslSocketConnector.setKeystore(certFilePath);
             sslSocketConnector.setTruststore(certFilePath);
@@ -126,8 +132,8 @@ public class CrawlerWebServer {
             buf.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>").append('\n');
             buf.append("<urlset ").append("xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">").append('\n');
             buf.append("<url>").append('\n');
-            buf.append("<loc>http://localhost:7070/index.html</loc>").append('\n');
-            buf.append("<loc>http://localhost:7070/file").append(count).append("-1.html").append("</loc>").append('\n');
+            buf.append("<loc>http://[::1]:7070/index.html</loc>").append('\n');
+            buf.append("<loc>http://[::1]:7070/file").append(count).append("-1.html").append("</loc>").append('\n');
             buf.append("</url>").append('\n');
             buf.append("</urlset>").append('\n');
             File sitemapsFile = new File(tempDir, "sitemaps.xml");
@@ -136,8 +142,8 @@ public class CrawlerWebServer {
 
             // sitemaps.txt
             buf = new StringBuilder();
-            buf.append("http://localhost:7070/index.html").append('\n');
-            buf.append("http://localhost:7070/file").append(count).append("-1.html").append('\n');
+            buf.append("http://[::1]:7070/index.html").append('\n');
+            buf.append("http://[::1]:7070/file").append(count).append("-1.html").append('\n');
             sitemapsFile = new File(tempDir, "sitemaps.txt");
             FileUtil.writeBytes(sitemapsFile.getAbsolutePath(), buf.toString().getBytes("UTF-8"));
             robotTxtFile.deleteOnExit();

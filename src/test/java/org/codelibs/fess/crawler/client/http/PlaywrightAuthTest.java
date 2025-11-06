@@ -86,7 +86,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         basicAuthConfig.setAuthScheme(new BasicScheme());
         this.playwrightClient.addAuthentication(basicAuthConfig);
 
-        final String url = "http://localhost:7070/";
+        final String url = "http://[::1]:7070/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
@@ -102,7 +102,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         digestAuthConfig.setAuthScheme(new DigestScheme());
         this.playwrightClient.addAuthentication(digestAuthConfig);
 
-        final String url = "http://localhost:7070/";
+        final String url = "http://[::1]:7070/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
@@ -116,14 +116,14 @@ public class PlaywrightAuthTest extends PlainTestCase {
 
         final var basicAuthConfig = new AuthenticationImpl(AuthScope.ANY, new UsernamePasswordCredentials("user", "password"));
         final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
-                "http://localhost:7070/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
-                "authenticity_token", "login_method", "POST", "login_url", "http://localhost:7070/j_security_check", "login_parameters",
+                "http://[::1]:7070/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
+                "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7070/j_security_check", "login_parameters",
                 "j_username=${username}&j_password=${password}");
         final var formScheme = new FormScheme(formSchemeConfiguration);
         basicAuthConfig.setAuthScheme(formScheme);
         this.playwrightClient.addAuthentication(basicAuthConfig);
 
-        final String url = "http://localhost:7070/";
+        final String url = "http://[::1]:7070/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
