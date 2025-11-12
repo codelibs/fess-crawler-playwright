@@ -64,6 +64,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
                 }
                 return null;
             }
+
+            @Override
+            public void destroy() {
+                // No-op for test
+            }
         };
 
         // Execute
@@ -101,6 +106,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
                 }
                 return null;
             }
+
+            @Override
+            public void destroy() {
+                // No-op for test
+            }
         };
 
         // Execute
@@ -136,6 +146,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
                 }
                 return null;
             }
+
+            @Override
+            public void destroy() {
+                // No-op for test
+            }
         };
 
         // Execute
@@ -159,6 +174,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             @Override
             public <T> T getComponent(final String name) {
                 return null; // Simulate component not found
+            }
+
+            @Override
+            public void destroy() {
+                // No-op for test
             }
         };
 
@@ -202,6 +222,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
                 }
                 return null;
             }
+
+            @Override
+            public void destroy() {
+                // No-op for test
+            }
         };
 
         // Execute
@@ -244,6 +269,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
                     return (T) mockCreator;
                 }
                 return null;
+            }
+
+            @Override
+            public void destroy() {
+                // No-op for test
             }
         };
 
