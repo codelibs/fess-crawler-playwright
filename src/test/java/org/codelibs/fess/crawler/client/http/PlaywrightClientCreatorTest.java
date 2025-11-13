@@ -69,6 +69,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             public void destroy() {
                 // No-op for test
             }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
         };
 
         // Execute
@@ -111,6 +116,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             public void destroy() {
                 // No-op for test
             }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
         };
 
         // Execute
@@ -151,6 +161,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             public void destroy() {
                 // No-op for test
             }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
         };
 
         // Execute
@@ -179,6 +194,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             @Override
             public void destroy() {
                 // No-op for test
+            }
+
+            @Override
+            public boolean available() {
+                return true;
             }
         };
 
@@ -227,6 +247,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             public void destroy() {
                 // No-op for test
             }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
         };
 
         // Execute
@@ -274,6 +299,11 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             @Override
             public void destroy() {
                 // No-op for test
+            }
+
+            @Override
+            public boolean available() {
+                return true;
             }
         };
 
