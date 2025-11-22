@@ -17,6 +17,8 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.crawler.client.CrawlerClientCreator;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
 
@@ -49,6 +51,8 @@ import jakarta.annotation.Resource;
  */
 public class PlaywrightClientCreator {
 
+    private static final Logger logger = LogManager.getLogger(PlaywrightClientCreator.class);
+
     /**
      * The {@code crawlerContainer} holds the instance of {@link CrawlerContainer} used by this client creator.
      * It manages the lifecycle and configuration of crawler-related components required for HTTP client operations.
@@ -72,10 +76,24 @@ public class PlaywrightClientCreator {
      * @throws IllegalStateException if the CrawlerClientCreator component is not found in the container
      */
     public void register(final List<String> regexList, final String componentName) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Attempting to register {} regex pattern(s) with component: {}", regexList.size(), componentName);
+        }
+
         final CrawlerClientCreator creator = crawlerContainer.getComponent("crawlerClientCreator");
         if (creator != null) {
-            regexList.stream().forEach(regex -> creator.register(regex, componentName));
+            regexList.stream().forEach(regex -> {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Registering regex pattern '{}' with component '{}'", regex, componentName);
+                }
+                creator.register(regex, componentName);
+            });
+            if (logger.isInfoEnabled()) {
+                logger.info("Successfully registered {} regex pattern(s) with component: {}", regexList.size(), componentName);
+            }
         } else {
+            logger.error("CrawlerClientCreator component not found in the container. Cannot register patterns for component: {}",
+                    componentName);
             throw new IllegalStateException("CrawlerClientCreator component not found in the container.");
         }
     }

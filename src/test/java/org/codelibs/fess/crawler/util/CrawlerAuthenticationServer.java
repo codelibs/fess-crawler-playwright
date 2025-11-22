@@ -38,6 +38,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.mortbay.jetty.Request;
 import org.mortbay.jetty.Server;
@@ -60,6 +62,8 @@ import org.mortbay.jetty.servlet.SessionHandler;
  * Supports Basic, Digest & Form authentication method
  */
 public class CrawlerAuthenticationServer {
+    private static final Logger logger = LogManager.getLogger(CrawlerAuthenticationServer.class);
+
     public enum AuthMethod {
         BASIC, DIGEST, FORM
     }
@@ -78,10 +82,16 @@ public class CrawlerAuthenticationServer {
     }
 
     public void addUser(String userName, Object password) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Adding user '{}' to authentication realm", userName);
+        }
         this.userRealm.put(userName, password);
     }
 
     public void setAuthMethod(final AuthMethod authMethod) {
+        if (logger.isInfoEnabled()) {
+            logger.info("Setting authentication method to: {}", authMethod);
+        }
         switch (authMethod) {
         case BASIC -> useBasicAuth();
         case DIGEST -> useDigestAuth();
@@ -96,26 +106,47 @@ public class CrawlerAuthenticationServer {
 
     public void start() {
         try {
+            if (logger.isInfoEnabled()) {
+                logger.info("Starting CrawlerAuthenticationServer on port {} with authentication method: {}", port,
+                        currentAuthMethod.get());
+            }
+
             // add port to server
             final var connector = new SocketConnector();
             connector.setPort(this.port);
             this.server.setConnectors(ArrayUtils.toArray(connector));
 
             server.start();
+
+            if (logger.isInfoEnabled()) {
+                logger.info("CrawlerAuthenticationServer started successfully on port {}", port);
+            }
         } catch (Exception e) {
+            logger.error("Failed to start CrawlerAuthenticationServer on port {}", port, e);
             throw new CrawlerSystemException(e);
         }
     }
 
     public void stop() {
         try {
+            if (logger.isInfoEnabled()) {
+                logger.info("Stopping CrawlerAuthenticationServer on port {}", port);
+            }
             this.server.stop();
+            if (logger.isInfoEnabled()) {
+                logger.info("CrawlerAuthenticationServer stopped successfully on port {}", port);
+            }
         } catch (Exception e) {
+            logger.error("Failed to stop CrawlerAuthenticationServer on port {}", port, e);
             throw new CrawlerSystemException(e);
         }
     }
 
     private void useBasicAuth() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Configuring Basic authentication");
+        }
+
         final var servletSuccess = new AuthSuccessServlet();
 
         final var contextHandler = new ContextHandler("/");
@@ -141,6 +172,10 @@ public class CrawlerAuthenticationServer {
     }
 
     private void useDigestAuth() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Configuring Digest authentication");
+        }
+
         final var servletSuccess = new AuthSuccessServlet();
 
         final var contextHandler = new ContextHandler("/");
@@ -166,6 +201,10 @@ public class CrawlerAuthenticationServer {
     }
 
     private void useFormAuth() {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Configuring Form authentication");
+        }
+
         final var servletSuccess = new AuthSuccessServlet();
         final var servletPrompt = new AuthFormServlet();
         final var servletAuthError = new AuthFailedServlet();
@@ -202,6 +241,9 @@ public class CrawlerAuthenticationServer {
     private static class AuthSuccessServlet extends DefaultServlet {
         @Override
         protected void doGet(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Authentication successful for request: {}", request.getRequestURI());
+            }
             response.getWriter().append("Authentication successful");
         }
     }
@@ -228,6 +270,9 @@ public class CrawlerAuthenticationServer {
 
         @Override
         protected void doGet(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Serving login form for request: {}", request.getRequestURI());
+            }
             response.getWriter().append(LOGIN_FORM_TEMPLATE.formatted(TOKEN_VALUE_FOR_FORM_AUTH));
         }
     }
@@ -235,6 +280,9 @@ public class CrawlerAuthenticationServer {
     private static class AuthFailedServlet extends DefaultServlet {
         @Override
         protected void doGet(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Authentication failed for request: {}", request.getRequestURI());
+            }
             response.getWriter().append("Authentication failed");
         }
     }
@@ -245,6 +293,9 @@ public class CrawlerAuthenticationServer {
             // authenticate normally for all methods other than form
             final AuthMethod authMethod = CrawlerAuthenticationServer.this.getCurrentAuthMethod();
             if (authMethod != AuthMethod.FORM) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Authenticating user '{}' with {} authentication", username, authMethod);
+                }
                 return super.authenticate(username, credentials, request);
             }
 
@@ -252,8 +303,14 @@ public class CrawlerAuthenticationServer {
             // Used for testing crawler's token retrieval function
             final String requestToken = request.getParameter("authenticity_token");
             if (StringUtils.equals(requestToken, TOKEN_VALUE_FOR_FORM_AUTH)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Authenticating user '{}' with FORM authentication (token valid)", username);
+                }
                 return super.authenticate(username, credentials, request);
             } else {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Authentication failed for user '{}' - invalid authenticity token", username);
+                }
                 return null;
             }
         }
