@@ -297,7 +297,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Playwright worker created successfully");
             }
         } catch (final Exception e) {
-            logger.error("Failed to create Playwright worker (browser: {}, playwright: {}, context: {}, page: {})", browserName,
+            logger.warn("Failed to create Playwright worker (browser: {}, playwright: {}, context: {}, page: {})", browserName,
                     playwright != null, browserContext != null, page != null, e);
             close(playwright, browser, browserContext, page);
             throw new CrawlerSystemException("Failed to create PlaywrightClient.", e);
@@ -423,7 +423,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         case "chromium":
             yield playwright.chromium();
         default:
-            logger.error("Unknown browser name specified: {}. Supported browsers: chromium, firefox, webkit", browserName);
+            logger.warn("Unknown browser name specified: {}. Supported browsers: chromium, firefox, webkit", browserName);
             throw new CrawlerSystemException("Unknown browser name: " + browserName);
         };
         if (logger.isDebugEnabled()) {
