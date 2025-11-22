@@ -125,8 +125,7 @@ public class CrawlerWebServer {
                 logger.info("CrawlerWebServer started successfully on port {}", port);
             }
         } catch (final Exception e) {
-            logger.warn("Failed to start CrawlerWebServer on port {}", port, e);
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to start CrawlerWebServer on port " + port, e);
         }
     }
 
@@ -141,8 +140,7 @@ public class CrawlerWebServer {
                 logger.info("CrawlerWebServer stopped successfully on port {}", port);
             }
         } catch (final Exception e) {
-            logger.warn("Failed to stop CrawlerWebServer on port {}", port, e);
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to stop CrawlerWebServer on port " + port, e);
         } finally {
             if (tempDocRoot) {
                 if (logger.isDebugEnabled()) {
@@ -201,8 +199,7 @@ public class CrawlerWebServer {
 
             return tempDir;
         } catch (final Exception e) {
-            logger.warn("Failed to create temporary document root", e);
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to create temporary document root", e);
         }
     }
 

@@ -122,8 +122,7 @@ public class CrawlerAuthenticationServer {
                 logger.info("CrawlerAuthenticationServer started successfully on port {}", port);
             }
         } catch (Exception e) {
-            logger.warn("Failed to start CrawlerAuthenticationServer on port {}", port, e);
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to start CrawlerAuthenticationServer on port " + port, e);
         }
     }
 
@@ -137,8 +136,7 @@ public class CrawlerAuthenticationServer {
                 logger.info("CrawlerAuthenticationServer stopped successfully on port {}", port);
             }
         } catch (Exception e) {
-            logger.warn("Failed to stop CrawlerAuthenticationServer on port {}", port, e);
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to stop CrawlerAuthenticationServer on port " + port, e);
         }
     }
 

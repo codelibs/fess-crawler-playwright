@@ -92,9 +92,8 @@ public class PlaywrightClientCreator {
                 logger.info("Successfully registered {} regex pattern(s) with component: {}", regexList.size(), componentName);
             }
         } else {
-            logger.warn("CrawlerClientCreator component not found in the container. Cannot register patterns for component: {}",
-                    componentName);
-            throw new IllegalStateException("CrawlerClientCreator component not found in the container.");
+            throw new IllegalStateException("CrawlerClientCreator component not found in the container. Cannot register patterns for component: "
+                    + componentName);
         }
     }
 }
