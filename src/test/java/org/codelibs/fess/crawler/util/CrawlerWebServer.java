@@ -18,6 +18,8 @@ package org.codelibs.fess.crawler.util;
 import java.io.File;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.io.FileUtil;
 import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
@@ -35,6 +37,8 @@ import org.mortbay.log.Log;
  *
  */
 public class CrawlerWebServer {
+    private static final Logger logger = LogManager.getLogger(CrawlerWebServer.class);
+
     private int port = 8080;
 
     private final File docRoot;
@@ -52,6 +56,10 @@ public class CrawlerWebServer {
         this.port = port;
         this.docRoot = docRoot;
 
+        if (logger.isDebugEnabled()) {
+            logger.debug("Initializing CrawlerWebServer on port {} with document root: {}", port, docRoot.getAbsolutePath());
+        }
+
         server = new Server();
 
         // Bind to all interfaces (dual-stack: IPv4 and IPv6)
@@ -66,6 +74,10 @@ public class CrawlerWebServer {
         final HandlerList handlers = new HandlerList();
         handlers.setHandlers(new Handler[] { resource_handler, new DefaultHandler() });
         server.setHandler(handlers);
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("CrawlerWebServer initialized successfully");
+        }
     }
 
     /**
@@ -75,8 +87,16 @@ public class CrawlerWebServer {
         this(port, docRoot);
 
         if (useSelfSignedTls) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Configuring TLS with self-signed certificate for port {}", port);
+            }
+
             final File certFile = ResourceUtil.getResourceAsFile("sslKeystore/selfsigned_keystore.jks");
             final String certFilePath = certFile.getAbsolutePath();
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using keystore file: {}", certFilePath);
+            }
 
             // Ssl handler - dual-stack support (IPv4 and IPv6)
             final SslSocketConnector sslSocketConnector = new SslSocketConnector();
@@ -88,25 +108,44 @@ public class CrawlerWebServer {
             sslSocketConnector.setPort(port);
 
             server.setConnectors(ArrayUtils.toArray(sslSocketConnector));
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("TLS configuration completed");
+            }
         }
     }
 
     public void start() {
         try {
+            if (logger.isInfoEnabled()) {
+                logger.info("Starting CrawlerWebServer on port {}", port);
+            }
             server.start();
+            if (logger.isInfoEnabled()) {
+                logger.info("CrawlerWebServer started successfully on port {}", port);
+            }
         } catch (final Exception e) {
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to start CrawlerWebServer on port " + port, e);
         }
     }
 
     public void stop() {
         try {
+            if (logger.isInfoEnabled()) {
+                logger.info("Stopping CrawlerWebServer on port {}", port);
+            }
             server.stop();
             server.join();
+            if (logger.isInfoEnabled()) {
+                logger.info("CrawlerWebServer stopped successfully on port {}", port);
+            }
         } catch (final Exception e) {
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to stop CrawlerWebServer on port " + port, e);
         } finally {
             if (tempDocRoot) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Deleting temporary document root: {}", docRoot.getAbsolutePath());
+                }
                 docRoot.delete();
             }
         }
@@ -114,6 +153,10 @@ public class CrawlerWebServer {
 
     protected static File createDocRoot(final int count) {
         try {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Creating temporary document root with content depth: {}", count);
+            }
+
             final File tempDir = File.createTempFile("crawlerDocRoot", "");
             tempDir.delete();
             tempDir.mkdirs();
@@ -150,9 +193,13 @@ public class CrawlerWebServer {
 
             generateContents(tempDir, count);
 
+            if (logger.isDebugEnabled()) {
+                logger.debug("Temporary document root created successfully: {}", tempDir.getAbsolutePath());
+            }
+
             return tempDir;
         } catch (final Exception e) {
-            throw new CrawlerSystemException(e);
+            throw new CrawlerSystemException("Failed to create temporary document root", e);
         }
     }
 

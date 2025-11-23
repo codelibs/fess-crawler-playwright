@@ -297,11 +297,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Playwright worker created successfully");
             }
         } catch (final Exception e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Failed to create Playwright instance.", e);
-            }
             close(playwright, browser, browserContext, page);
-            throw new CrawlerSystemException("Failed to create PlaywrightClient.", e);
+            throw new CrawlerSystemException(
+                    "Failed to create Playwright worker (browser: " + browserName + ", playwright: " + (playwright != null) + ", context: "
+                            + (browserContext != null) + ", page: " + (page != null) + ")",
+                    e);
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
@@ -347,7 +347,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 try {
                     closer.run();
                 } catch (final Exception e) {
-                    logger.warn("Failed to close the playwright instance.", e);
+                    logger.warn("Failed to close Playwright component in background thread", e);
                 }
                 latch.countDown();
             }, "Playwright-Closer");
@@ -357,9 +357,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.warn("The close process timed out after {}s", closeTimeout);
             }
         } catch (final InterruptedException e) {
-            logger.warn("Interrupted to wait a process.", e);
+            logger.warn("Interrupted while waiting for the close process to complete", e);
         } catch (final Exception e) {
-            logger.warn("Failed to close the playwright instance.", e);
+            logger.warn("Unexpected error during Playwright component closure", e);
         }
     }
 
@@ -424,7 +424,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         case "chromium":
             yield playwright.chromium();
         default:
-            throw new CrawlerSystemException("Unknown browser name: " + browserName);
+            throw new CrawlerSystemException(
+                    "Unknown browser name: " + browserName + ". Supported browsers: chromium, firefox, webkit");
         };
         if (logger.isDebugEnabled()) {
             logger.debug("Successfully obtained {} browser type", browserName);
@@ -503,7 +504,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 return createResponseData(page, request, response, null);
             } catch (final Exception e) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Waiting for downloaded file: {}", e.getMessage());
+                    logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
                 }
                 for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
                     try {
@@ -583,7 +584,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final UrlFilter urlFilter = context.getUrlFilter();
                 if (urlFilter != null && !urlFilter.match(url)) {
                     if (logger.isDebugEnabled()) {
-                        logger.debug("{} is not a target url:", url);
+                        logger.debug("{} is not a target URL", url);
                     }
                     throw new ChildUrlsException(Collections.emptySet(), "#crawledUrlNotTarget");
                 }
@@ -641,7 +642,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                         }
                     }
                 } catch (final IOException e) {
-                    logger.warn("Could not read from {}", url, e);
+                    logger.warn("Failed to read response body for MIME type detection from URL: {}", url, e);
                 }
                 return body;
             }).orElse(body);
@@ -674,7 +675,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                             logger.debug("filename:{} content-type:{}", filename, contentType);
                         }
                     } catch (final IOException e) {
-                        logger.warn("Could not read {}", tempFile.getAbsolutePath(), e);
+                        logger.warn("Failed to read downloaded file for MIME type detection: {}", tempFile.getAbsolutePath(), e);
                     }
                 });
                 responseData.setResponseBody(tempFile, true);
@@ -754,7 +755,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 final SimpleDateFormat dateFormat = new SimpleDateFormat(LAST_MODIFIED_FORMAT, Locale.ENGLISH);
                 return dateFormat.parse(value);
             } catch (final ParseException e) {
-                logger.warn("Invalid format: " + value, e);
+                logger.warn("Failed to parse date header value '{}' with expected format '{}'", value, LAST_MODIFIED_FORMAT, e);
             }
         }
         return null;

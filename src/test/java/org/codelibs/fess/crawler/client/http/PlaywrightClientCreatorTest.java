@@ -207,7 +207,8 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
             playwrightClientCreator.register(regexList, componentName);
             fail("Expected IllegalStateException to be thrown");
         } catch (final IllegalStateException e) {
-            assertEquals("CrawlerClientCreator component not found in the container.", e.getMessage());
+            assertEquals("CrawlerClientCreator component not found in the container. Cannot register patterns for component: playwrightClient",
+                    e.getMessage());
         }
     }
 
