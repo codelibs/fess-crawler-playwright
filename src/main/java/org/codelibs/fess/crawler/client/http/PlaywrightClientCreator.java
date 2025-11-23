@@ -92,8 +92,10 @@ public class PlaywrightClientCreator {
                 logger.info("Successfully registered {} regex pattern(s) with component: {}", regexList.size(), componentName);
             }
         } else {
-            throw new IllegalStateException("CrawlerClientCreator component not found in the container. Cannot register patterns for component: "
-                    + componentName);
+            throw new IllegalStateException(
+                    "CrawlerClientCreator component not found in the crawler container. Cannot register regex patterns for component: '"
+                            + componentName
+                            + "'. Please ensure the crawler container is properly initialized and 'crawlerClientCreator' is configured in the Spring XML configuration.");
         }
     }
 }

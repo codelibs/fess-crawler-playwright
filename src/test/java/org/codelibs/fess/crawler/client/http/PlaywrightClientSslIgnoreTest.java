@@ -65,7 +65,8 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
             this.playwrightClient.execute(makeRequestData(url));
             fail("No exception thrown.");
         } catch (final CrawlerSystemException e) {
-            assertEquals("Page should be inaccessible with default client settings", "Failed to access https://[::1]:7070/test.txt",
+            assertEquals("Page should be inaccessible with default client settings",
+                    "Failed to access the URL. URL: https://[::1]:7070/test.txt, Response received: false, Download started: false, Timeout: 15s",
                     e.getMessage());
         }
     }

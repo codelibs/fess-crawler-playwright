@@ -298,10 +298,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
         } catch (final Exception e) {
             close(playwright, browser, browserContext, page);
-            throw new CrawlerSystemException(
-                    "Failed to create Playwright worker (browser: " + browserName + ", playwright: " + (playwright != null) + ", context: "
-                            + (browserContext != null) + ", page: " + (page != null) + ")",
-                    e);
+            final String failureStage = playwright == null ? "Playwright initialization"
+                    : browser == null ? "Browser launch (" + browserName + ")"
+                            : browserContext == null ? "BrowserContext creation" : "Page creation";
+            throw new CrawlerSystemException("Failed to create Playwright worker at stage: " + failureStage
+                    + ". Browser: " + browserName + ", LaunchOptions: " + (launchOptions != null), e);
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
@@ -424,8 +425,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         case "chromium":
             yield playwright.chromium();
         default:
-            throw new CrawlerSystemException(
-                    "Unknown browser name: " + browserName + ". Supported browsers: chromium, firefox, webkit");
+            throw new CrawlerSystemException("Unsupported browser: '" + browserName
+                    + "'. Supported values are: 'chromium', 'firefox', or 'webkit'. Please check your browser configuration.");
         };
         if (logger.isDebugEnabled()) {
             logger.debug("Successfully obtained {} browser type", browserName);
@@ -529,7 +530,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
                 }
-                throw new CrawlingAccessException("Failed to access " + request.getUrl(), e);
+                final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null) + ", Download started: "
+                        + (download != null) + ", Timeout: " + downloadTimeout + "s";
+                throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, e);
             } finally {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Resetting page to about:blank");
