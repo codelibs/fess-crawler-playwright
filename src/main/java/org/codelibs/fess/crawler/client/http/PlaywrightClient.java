@@ -301,8 +301,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             final String failureStage = playwright == null ? "Playwright initialization"
                     : browser == null ? "Browser launch (" + browserName + ")"
                             : browserContext == null ? "BrowserContext creation" : "Page creation";
-            throw new CrawlerSystemException("Failed to create Playwright worker at stage: " + failureStage
-                    + ". Browser: " + browserName + ", LaunchOptions: " + (launchOptions != null), e);
+            throw new CrawlerSystemException("Failed to create Playwright worker at stage: " + failureStage + ". Browser: " + browserName
+                    + ", LaunchOptions: " + (launchOptions != null), e);
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
@@ -530,8 +530,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
                 }
-                final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null) + ", Download started: "
-                        + (download != null) + ", Timeout: " + downloadTimeout + "s";
+                final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null)
+                        + ", Download started: " + (download != null) + ", Timeout: " + downloadTimeout + "s";
                 throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, e);
             } finally {
                 if (logger.isDebugEnabled()) {
