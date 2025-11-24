@@ -218,12 +218,8 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
      */
     public void test_register_withMultiplePatterns() {
         // Setup
-        final List<String> regexList = Arrays.asList(
-            "https?://www\\.example\\.com/.*",
-            "https?://api\\.example\\.com/.*",
-            "https?://cdn\\.example\\.com/.*",
-            "https?://static\\.example\\.com/.*"
-        );
+        final List<String> regexList = Arrays.asList("https?://www\\.example\\.com/.*", "https?://api\\.example\\.com/.*",
+                "https?://cdn\\.example\\.com/.*", "https?://static\\.example\\.com/.*");
         final String componentName = "multiPatternClient";
         final List<String> registeredPatterns = new ArrayList<>();
 
@@ -272,11 +268,8 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
      */
     public void test_register_withSpecialCharactersInPattern() {
         // Setup
-        final List<String> regexList = Arrays.asList(
-            "https?://[a-z0-9]+\\.example\\.com/.*",
-            "https?://example\\.com/path/[0-9]+/.*",
-            "https?://.*\\.example\\.(com|org|net)/.*"
-        );
+        final List<String> regexList = Arrays.asList("https?://[a-z0-9]+\\.example\\.com/.*", "https?://example\\.com/path/[0-9]+/.*",
+                "https?://.*\\.example\\.(com|org|net)/.*");
         final String componentName = "specialPatternClient";
         final List<String> registeredPatterns = new ArrayList<>();
 
