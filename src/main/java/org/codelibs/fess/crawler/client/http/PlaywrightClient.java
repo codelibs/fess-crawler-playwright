@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -110,7 +111,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * A shared worker instance for Playwright.
      */
-    protected static Tuple4<Playwright, Browser, BrowserContext, Page> SHARED_WORKER = null;
+    protected static volatile Tuple4<Playwright, Browser, BrowserContext, Page> SHARED_WORKER = null;
 
     /**
      * The key to specify a shared client.
@@ -461,18 +462,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final Page page = worker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
+
+        // Create handler references for proper cleanup
+        final Consumer<Response> responseHandler = response -> responseRef.compareAndSet(null, response);
+        final Consumer<Download> downloadHandler = download -> downloadRef.compareAndSet(null, download);
+
         synchronized (page) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Acquired page lock for URL: {}", url);
             }
 
             try {
-                page.onResponse(response -> {
-                    if (responseRef.get() == null) {
-                        responseRef.set(response);
-                    }
-                });
-                page.onDownload(downloadRef::set);
+                page.onResponse(responseHandler);
+                page.onDownload(downloadHandler);
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Download handler registered for potential file downloads");
@@ -507,18 +509,32 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
                 }
-                for (int i = 0; i < downloadTimeout * 10 && (downloadRef.get() == null || responseRef.get() == null); i++) {
+
+                // Wait for download with progressive backoff for responsiveness
+                // Start with short intervals, increase over time to balance responsiveness and CPU efficiency
+                // Note: page.waitForTimeout() is required to drive Playwright's event loop
+                final long timeoutMs = downloadTimeout * 1000L;
+                final long startTime = System.currentTimeMillis();
+                long pollInterval = 100L; // Start with 100ms
+                while (System.currentTimeMillis() - startTime < timeoutMs) {
+                    if (responseRef.get() != null && downloadRef.get() != null) {
+                        break;
+                    }
                     try {
-                        page.waitForTimeout(100L);
-                        if (logger.isDebugEnabled() && i % 10 == 0) {
-                            logger.debug("Waiting for download completion (timeout: {}s), waited: {}s", downloadTimeout, i / 10);
+                        page.waitForTimeout(pollInterval);
+                        // Progressive backoff: 100ms -> 200ms -> 400ms -> 500ms (max)
+                        if (pollInterval < 500L) {
+                            pollInterval = Math.min(pollInterval * 2, 500L);
                         }
-                    } catch (final Exception e1) {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Failed to wait for page loading.", e1);
-                        }
+                    } catch (final Exception ignored) {
+                        // ignore timeout exceptions during polling
                     }
                 }
+                if (logger.isDebugEnabled()) {
+                    final long elapsed = System.currentTimeMillis() - startTime;
+                    logger.debug("Download wait completed after {}ms, timeout: {}s", elapsed, downloadTimeout);
+                }
+
                 final Response response = responseRef.get();
                 final Download download = downloadRef.get();
                 if (response != null && download != null) {
@@ -534,6 +550,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                         + ", Download started: " + (download != null) + ", Timeout: " + downloadTimeout + "s";
                 throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, e);
             } finally {
+                // Clean up event handlers to prevent memory leaks
+                page.offResponse(responseHandler);
+                page.offDownload(downloadHandler);
+
                 if (logger.isDebugEnabled()) {
                     logger.debug("Resetting page to about:blank");
                 }
