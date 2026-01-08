@@ -36,7 +36,9 @@ import java.util.function.Consumer;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.apache.http.auth.UsernamePasswordCredentials;
+import java.time.Instant;
+
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
@@ -77,7 +79,7 @@ import jakarta.annotation.Resource;
  * It supports various configurations for browser types, context options, and timeouts.
  *
  * <p>This client can be configured to use a shared Playwright worker or create a new one for each instance.
- * It also supports SSL certificate ignoring, proxy settings, and authentication through Fess's built-in HcHttpClient.</p>
+ * It also supports SSL certificate ignoring, proxy settings, and authentication through Fess's built-in Hc5HttpClient.</p>
  *
  * <p>Key features include:</p>
  * <ul>
@@ -833,7 +835,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final NewContextOptions options = newContextOptions != null ? newContextOptions : new NewContextOptions();
 
         // Check whether to skip SSL certificate checking
-        // Also check ignoreSslCertificate for backward compatibility with HcHttpClient's config
+        // Also check ignoreSslCertificate for backward compatibility with Hc5HttpClient's config
         final boolean ignoreHttpsErrors = getInitParameter(IGNORE_HTTPS_ERRORS_PROPERTY, false, Boolean.class);
         final boolean ignoreSslCertificate = getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class);
 
@@ -861,7 +863,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             final Proxy proxy = new Proxy(proxyAddress);
             if (proxyCredentials != null) {
                 proxy.setUsername(proxyCredentials.getUserName());
-                proxy.setPassword(proxyCredentials.getPassword());
+                proxy.setPassword(new String(proxyCredentials.getPassword()));
             }
             proxy.setBypass(proxyBypass);
             options.setProxy(proxy);
@@ -875,7 +877,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
-     * Creates an authenticated Playwright context, by using Fess's built-in HcHttpClient to do authentication,
+     * Creates an authenticated Playwright context, by using Fess's built-in Hc5HttpClient to do authentication,
      * then passes its cookies to Playwright.
      *
      * @param browser The browser instance.
@@ -883,8 +885,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return The browser context.
      */
     protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
-        final Authentication[] authentications =
-                getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Authentication[0], Authentication[].class);
+        final Hc5Authentication[] authentications =
+                getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Hc5Authentication[0], Hc5Authentication[].class);
 
         if (logger.isDebugEnabled()) {
             logger.debug("Processing {} authentication configuration(s)", authentications.length);
@@ -897,17 +899,17 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return browser.newContext(newContextOptions);
         }
 
-        for (final Authentication authentication : authentications) {
+        for (final Hc5Authentication authentication : authentications) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Processing authentication scheme: {}", authentication.getAuthScheme().getSchemeName());
+                logger.debug("Processing authentication scheme: {}", authentication.getAuthScheme().getName());
             }
-            if (!Strings.CS.equals(authentication.getAuthScheme().getSchemeName(), "form")) {
+            if (!Strings.CS.equals(authentication.getAuthScheme().getName(), "form")) {
                 // Use the first non-form auth credentials to fill the browser's credential prompt
                 if (logger.isDebugEnabled()) {
                     logger.debug("Setting HTTP credentials for non-form authentication");
                 }
                 final String username = authentication.getCredentials().getUserPrincipal().getName();
-                final String password = authentication.getCredentials().getPassword();
+                final String password = new String(authentication.getCredentials().getPassword());
                 newContextOptions.setHttpCredentials(username, password);
                 break;
             }
@@ -917,12 +919,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             logger.debug("Creating browser context with authentication");
         }
         final BrowserContext playwrightContext = browser.newContext(newContextOptions);
-        try (final var fessHttpClient = new HcHttpClient()) {
+        try (final var fessHttpClient = new Hc5HttpClient()) {
             fessHttpClient.setInitParameterMap(initParamMap);
             fessHttpClient.init();
-            final List<org.apache.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
+            final List<org.apache.hc.client5.http.cookie.Cookie> fessCookies = fessHttpClient.cookieStore.getCookies();
             if (logger.isDebugEnabled()) {
-                logger.debug("Transferring {} cookies from HcHttpClient to Playwright", fessCookies.size());
+                logger.debug("Transferring {} cookies from Hc5HttpClient to Playwright", fessCookies.size());
             }
             final List<Cookie> playwrightCookies = fessCookies.stream().map(apacheCookie -> {
                 final var playwrightCookie = new Cookie(apacheCookie.getName(), apacheCookie.getValue());
@@ -930,11 +932,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 playwrightCookie.setPath(apacheCookie.getPath());
                 playwrightCookie.setSecure(apacheCookie.isSecure());
 
-                // Set expiry time - Apache's cookies use milliseconds as time unit (via Date object),
+                // Set expiry time - Apache HC5's cookies use Instant,
                 // while Playwright uses seconds.
-                final Date cookieExpiryDate = apacheCookie.getExpiryDate();
-                if (cookieExpiryDate != null) {
-                    playwrightCookie.setExpires(cookieExpiryDate.getTime() / 1000.0);
+                final Instant cookieExpiryInstant = apacheCookie.getExpiryInstant();
+                if (cookieExpiryInstant != null) {
+                    playwrightCookie.setExpires(cookieExpiryInstant.toEpochMilli() / 1000.0);
                 }
 
                 return playwrightCookie;

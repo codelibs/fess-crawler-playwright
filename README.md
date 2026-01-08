@@ -125,7 +125,7 @@ client.setCloseTimeout(15000);    // 15 seconds
 ### Authentication Setup
 
 ```java
-// The client automatically integrates with Fess's HcHttpClient for authentication
+// The client automatically integrates with Fess's Hc5HttpClient for authentication
 // Configure authentication in your Fess crawler configuration
 NewContextOptions contextOptions = new NewContextOptions()
     .setUserAgent("CustomUserAgent/1.0")

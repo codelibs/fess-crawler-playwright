@@ -27,7 +27,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
@@ -71,7 +71,7 @@ public class CrawlerWebProxy {
         if (apacheCredentials == null) {
             setCredentials("", "");
         } else {
-            setCredentials(apacheCredentials.getUserName(), apacheCredentials.getPassword());
+            setCredentials(apacheCredentials.getUserName(), new String(apacheCredentials.getPassword()));
         }
     }
 

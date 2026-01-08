@@ -35,15 +35,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.impl.auth.BasicScheme;
-import org.apache.http.impl.auth.DigestScheme;
+import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
+import org.apache.hc.client5.http.impl.auth.BasicScheme;
+import org.apache.hc.client5.http.impl.auth.DigestScheme;
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
-import org.codelibs.fess.crawler.client.http.form.FormScheme;
-import org.codelibs.fess.crawler.client.http.impl.AuthenticationImpl;
+import org.codelibs.fess.crawler.client.http.form.Hc5FormScheme;
+import org.codelibs.fess.crawler.client.http.impl.Hc5AuthenticationImpl;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
@@ -82,7 +82,8 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.BASIC);
         this.authServer.start();
 
-        final var basicAuthConfig = new AuthenticationImpl(AuthScope.ANY, new UsernamePasswordCredentials("user", "password"));
+        final var basicAuthConfig =
+                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         basicAuthConfig.setAuthScheme(new BasicScheme());
         this.playwrightClient.addAuthentication(basicAuthConfig);
 
@@ -98,7 +99,8 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.DIGEST);
         this.authServer.start();
 
-        final var digestAuthConfig = new AuthenticationImpl(AuthScope.ANY, new UsernamePasswordCredentials("user", "password"));
+        final var digestAuthConfig =
+                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         digestAuthConfig.setAuthScheme(new DigestScheme());
         this.playwrightClient.addAuthentication(digestAuthConfig);
 
@@ -114,14 +116,15 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.FORM);
         this.authServer.start();
 
-        final var basicAuthConfig = new AuthenticationImpl(AuthScope.ANY, new UsernamePasswordCredentials("user", "password"));
+        final var formAuthConfig =
+                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
                 "http://[::1]:7070/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
                 "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7070/j_security_check", "login_parameters",
                 "j_username=${username}&j_password=${password}");
-        final var formScheme = new FormScheme(formSchemeConfiguration);
-        basicAuthConfig.setAuthScheme(formScheme);
-        this.playwrightClient.addAuthentication(basicAuthConfig);
+        final var formScheme = new Hc5FormScheme(formSchemeConfiguration);
+        formAuthConfig.setAuthScheme(formScheme);
+        this.playwrightClient.addAuthentication(formAuthConfig);
 
         final String url = "http://[::1]:7070/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
@@ -152,7 +155,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
     }
 
     private static class PlaywrightClientWithAuthSettings extends PlaywrightClient {
-        private final List<Authentication> authConfigs = new ArrayList<>();
+        private final List<Hc5Authentication> authConfigs = new ArrayList<>();
 
         PlaywrightClientWithAuthSettings() {
             initParamMap = new HashMap<>();
@@ -163,9 +166,9 @@ public class PlaywrightAuthTest extends PlainTestCase {
             return Optional.of(new MimeTypeHelperImpl());
         }
 
-        private void addAuthentication(final Authentication authentication) {
+        private void addAuthentication(final Hc5Authentication authentication) {
             this.authConfigs.add(authentication);
-            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authConfigs.toArray(Authentication[]::new));
+            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authConfigs.toArray(Hc5Authentication[]::new));
         }
     }
 }
