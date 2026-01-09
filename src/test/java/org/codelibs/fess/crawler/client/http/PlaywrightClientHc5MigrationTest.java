@@ -26,7 +26,7 @@ import java.util.Optional;
 import org.apache.hc.client5.http.auth.AuthScope;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.hc.client5.http.impl.auth.BasicScheme;
-import org.codelibs.fess.crawler.client.http.impl.Hc5AuthenticationImpl;
+import org.codelibs.fess.crawler.client.http.Hc5Authentication;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.dbflute.utflute.core.PlainTestCase;
@@ -61,14 +61,14 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     }
 
     /**
-     * Test that Hc5AuthenticationImpl is correctly created with AuthScope.
+     * Test that Hc5Authentication is correctly created with AuthScope.
      */
     public void test_hc5AuthenticationImpl_creation() {
         final AuthScope authScope = new AuthScope(null, -1); // Any host, any port
         final UsernamePasswordCredentials credentials = new UsernamePasswordCredentials("user", "pass".toCharArray());
         final BasicScheme basicScheme = new BasicScheme();
 
-        final Hc5AuthenticationImpl auth = new Hc5AuthenticationImpl(authScope, credentials, basicScheme);
+        final Hc5Authentication auth = new Hc5Authentication(authScope, credentials, basicScheme);
 
         assertNotNull(auth.getAuthScope());
         assertNotNull(auth.getCredentials());
@@ -93,7 +93,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
         final PlaywrightClientWithTestableAuth playwrightClient = new PlaywrightClientWithTestableAuth();
 
         try {
-            final Hc5Authentication[] authentications = new Hc5Authentication[] { new Hc5AuthenticationImpl(new AuthScope(null, -1),
+            final Hc5Authentication[] authentications = new Hc5Authentication[] { new Hc5Authentication(new AuthScope(null, -1),
                     new UsernamePasswordCredentials("user1", "pass1".toCharArray()), new BasicScheme()) };
 
             playwrightClient.setAuthentications(authentications);
@@ -210,11 +210,11 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
         final List<Hc5Authentication> authList = new ArrayList<>();
 
         // Add Basic auth
-        authList.add(new Hc5AuthenticationImpl(new AuthScope("example.com", 80),
+        authList.add(new Hc5Authentication(new AuthScope("example.com", 80),
                 new UsernamePasswordCredentials("basicUser", "basicPass".toCharArray()), new BasicScheme()));
 
         // Add another Basic auth for different host
-        authList.add(new Hc5AuthenticationImpl(new AuthScope("api.example.com", 443),
+        authList.add(new Hc5Authentication(new AuthScope("api.example.com", 443),
                 new UsernamePasswordCredentials("apiUser", "apiPass".toCharArray()), new BasicScheme()));
 
         assertEquals(2, authList.size());

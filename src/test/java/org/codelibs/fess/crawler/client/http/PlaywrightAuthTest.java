@@ -43,7 +43,7 @@ import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.client.http.form.Hc5FormScheme;
-import org.codelibs.fess.crawler.client.http.impl.Hc5AuthenticationImpl;
+import org.codelibs.fess.crawler.client.http.Hc5Authentication;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
@@ -83,7 +83,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.start();
 
         final var basicAuthConfig =
-                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
+                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         basicAuthConfig.setAuthScheme(new BasicScheme());
         this.playwrightClient.addAuthentication(basicAuthConfig);
 
@@ -100,7 +100,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.start();
 
         final var digestAuthConfig =
-                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
+                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         digestAuthConfig.setAuthScheme(new DigestScheme());
         this.playwrightClient.addAuthentication(digestAuthConfig);
 
@@ -117,7 +117,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.start();
 
         final var formAuthConfig =
-                new Hc5AuthenticationImpl(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
+                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
                 "http://[::1]:7070/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
                 "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7070/j_security_check", "login_parameters",
