@@ -16,6 +16,8 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.util.ArrayList;
+
+import org.junit.jupiter.api.BeforeEach;
 import java.util.Arrays;
 import java.util.List;
 
@@ -33,6 +35,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     private PlaywrightClientCreator playwrightClientCreator;
 
     @Override
+    @BeforeEach
     protected void setUp() throws Exception {
         super.setUp();
         playwrightClientCreator = new PlaywrightClientCreator();
