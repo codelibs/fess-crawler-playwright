@@ -29,6 +29,10 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.io.UnsupportedEncodingException;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,15 +64,15 @@ public class PlaywrightAuthTest extends PlainTestCase {
 
     private PlaywrightClientWithAuthSettings playwrightClient;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
 
         this.authServer = new CrawlerAuthenticationServer();
         this.playwrightClient = new PlaywrightClientWithAuthSettings();
     }
 
-    @Override
+    @AfterEach
     protected void tearDown() throws Exception {
         this.playwrightClient.close();
         this.authServer.stop();

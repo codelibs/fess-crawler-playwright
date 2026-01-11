@@ -110,7 +110,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
 
                 // Response body should contain HTML
                 final String body = getBodyAsString(responseData);
-                assertTrue("Body should contain HTML tags", body.contains("<html") || body.contains("<HTML"));
+                assertTrue(body.contains("<html") || body.contains("<HTML"));
             } finally {
                 server.stop();
             }

@@ -16,6 +16,10 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.io.File;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import java.io.UnsupportedEncodingException;
 import java.util.Optional;
 
@@ -42,9 +46,9 @@ public class PlaywrightClientTest extends PlainTestCase {
 
     private PlaywrightClient playwrightClient;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
 
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         playwrightClient = new PlaywrightClient() {
@@ -57,7 +61,7 @@ public class PlaywrightClientTest extends PlainTestCase {
         playwrightClient.init();
     }
 
-    @Override
+    @AfterEach
     protected void tearDown() throws Exception {
         playwrightClient.close();
         super.tearDown();

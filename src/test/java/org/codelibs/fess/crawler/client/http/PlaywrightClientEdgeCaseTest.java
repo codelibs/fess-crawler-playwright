@@ -130,7 +130,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
             final String url = "http://invalid-domain-that-does-not-exist-12345.com/";
             try {
                 playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                fail("Expected CrawlingAccessException for invalid URL");
+                fail();
             } catch (final CrawlingAccessException e) {
                 // Expected exception
                 assertTrue(e.getMessage().contains("Failed to access"));
@@ -160,7 +160,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
             final String url = "http://[::1]:19999/";
             try {
                 playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                fail("Expected CrawlingAccessException for timeout");
+                fail();
             } catch (final CrawlingAccessException e) {
                 // Expected exception
                 assertTrue(e.getMessage().contains("Failed to access"));

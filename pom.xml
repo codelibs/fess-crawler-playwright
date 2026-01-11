@@ -127,12 +127,6 @@
 			<version>${playwright.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<version>${junit.version}</version>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
 			<groupId>org.dbflute.utflute</groupId>
 			<artifactId>utflute-core</artifactId>
 			<version>${utflute.version}</version>

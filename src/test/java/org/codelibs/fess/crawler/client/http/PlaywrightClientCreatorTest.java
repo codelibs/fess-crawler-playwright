@@ -16,6 +16,9 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.util.ArrayList;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import java.util.Arrays;
 import java.util.List;
 
@@ -32,9 +35,9 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
 
     private PlaywrightClientCreator playwrightClientCreator;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
         playwrightClientCreator = new PlaywrightClientCreator();
     }
 
@@ -205,7 +208,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
         // Execute & Verify
         try {
             playwrightClientCreator.register(regexList, componentName);
-            fail("Expected IllegalStateException to be thrown");
+            fail();
         } catch (final IllegalStateException e) {
             assertEquals(
                     "CrawlerClientCreator component not found in the crawler container. Cannot register regex patterns for component: 'playwrightClient'. Please ensure the crawler container is properly initialized and 'crawlerClientCreator' is configured in the Spring XML configuration.",

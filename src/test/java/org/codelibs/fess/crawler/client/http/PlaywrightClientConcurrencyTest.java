@@ -194,10 +194,10 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
                 startLatch.countDown();
 
                 // Wait for completion
-                assertTrue("Threads should complete within timeout", doneLatch.await(60, TimeUnit.SECONDS));
+                assertTrue(doneLatch.await(60, TimeUnit.SECONDS));
 
                 executor.shutdown();
-                assertTrue("Executor should terminate", executor.awaitTermination(10, TimeUnit.SECONDS));
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
 
                 // All requests should succeed
                 assertEquals(numThreads, successCount.get());
@@ -259,7 +259,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
             }
 
             executor.shutdown();
-            assertTrue("Executor should terminate", executor.awaitTermination(10, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
 
             assertEquals(numClients, successCount);
         } finally {
@@ -353,10 +353,10 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
             startLatch.countDown();
 
             // Wait for completion
-            assertTrue("Init threads should complete", doneLatch.await(30, TimeUnit.SECONDS));
+            assertTrue(doneLatch.await(30, TimeUnit.SECONDS));
 
             executor.shutdown();
-            assertTrue("Executor should terminate", executor.awaitTermination(10, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
 
             // No errors should occur
             assertEquals(0, errorCount.get());

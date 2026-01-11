@@ -17,6 +17,10 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import java.util.HashMap;
 import java.util.Optional;
 
@@ -37,16 +41,16 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
 
     private PlaywrightClientWithSslSettings playwrightClient;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @BeforeEach
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
 
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         this.crawlerWebServer = new CrawlerWebServer(7070, docRootDir, true);
         this.playwrightClient = new PlaywrightClientWithSslSettings();
     }
 
-    @Override
+    @AfterEach
     protected void tearDown() throws Exception {
         this.playwrightClient.close();
         this.crawlerWebServer.stop();
@@ -63,9 +67,9 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         try {
             final String url = "https://[::1]:7070/test.txt";
             this.playwrightClient.execute(makeRequestData(url));
-            fail("No exception thrown.");
+            fail();
         } catch (final CrawlerSystemException e) {
-            assertEquals("Page should be inaccessible with default client settings",
+            assertEquals(
                     "Failed to access the URL. URL: https://[::1]:7070/test.txt, Response received: false, Download started: false, Timeout: 15s",
                     e.getMessage());
         }
@@ -111,11 +115,11 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
     }
 
-    private static RequestData makeRequestData(final String url) {
+    private RequestData makeRequestData(final String url) {
         return RequestDataBuilder.newRequestData().get().url(url).build();
     }
 
-    private static void assertTextFileIsCorrect(final ResponseData responseData) {
+    private void assertTextFileIsCorrect(final ResponseData responseData) {
         assertEquals(200, responseData.getHttpStatusCode());
         assertEquals("GET", responseData.getMethod());
         assertEquals("UTF-8", responseData.getCharSet());
@@ -124,7 +128,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         assertEquals(25, responseData.getContentLength());
     }
 
-    private static String getBodyAsString(final ResponseData responseData) {
+    private String getBodyAsString(final ResponseData responseData) {
         try {
             return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());
         } catch (final UnsupportedEncodingException e) {
