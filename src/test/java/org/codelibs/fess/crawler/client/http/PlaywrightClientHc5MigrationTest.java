@@ -131,7 +131,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
 
         // The code should handle null gracefully
         if (expiryInstant != null) {
-            fail("Expected expiryInstant to be null");
+            fail();
         }
 
         // No exception should be thrown

@@ -167,18 +167,18 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
             // Expected exception - verify it's related to browser name
             exceptionThrown = true;
             final String message = e.getMessage();
-            assertNotNull("Exception message should not be null", message);
-            assertTrue("Expected error message about browser name, got: " + message, message.contains("Unknown browser name")
-                    || message.contains("invalid-browser") || message.contains("Failed to create PlaywrightClient"));
+            assertNotNull(message);
+            assertTrue(message.contains("Unknown browser name") || message.contains("invalid-browser")
+                    || message.contains("Failed to create PlaywrightClient"));
         } catch (final Exception e) {
             exceptionThrown = true;
             // Any exception is acceptable for invalid browser name
-            assertNotNull("Exception should not be null", e);
+            assertNotNull(e);
         } finally {
             playwrightClient.close();
         }
 
-        assertTrue("Expected an exception to be thrown for invalid browser name", exceptionThrown);
+        assertTrue(exceptionThrown);
     }
 
     /**

@@ -76,7 +76,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
 
         // expect the proxy server to not be touched
-        assertEquals("Proxy server must be untouched", ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_separatedProxyHostAndPort_noAuth() {
@@ -96,7 +96,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
 
         // expect the proxy server to be accessed
-        assertEquals("Proxy server must be accessed", ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_combinedProxyHostAndPort_noAuth() {
@@ -115,7 +115,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
 
         // expect the proxy server to be accessed
-        assertEquals("Proxy server must be accessed", ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_proxyHostAndPort_correctAuth() {
@@ -138,7 +138,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
 
         // expect the proxy server to be accessed
-        assertEquals("Proxy server must be accessed", ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_proxyHostAndPort_missingRequiredAuth() {
@@ -160,8 +160,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(407, responseData.getHttpStatusCode());
 
         // expect the proxy server to not be touched
-        assertEquals("Proxy server must prompt client for credentials", ProxyAccessStatus.PROMPTED_FOR_CREDENTIALS,
-                this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.PROMPTED_FOR_CREDENTIALS, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_proxyHostAndPort_incorrectAuth() {
@@ -184,7 +183,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(401, responseData.getHttpStatusCode());
 
         // expect the proxy server to not be touched
-        assertEquals("Proxy server must deny unauthorized access", ProxyAccessStatus.ACCESS_DENIED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.ACCESS_DENIED, this.proxyServer.getAccessResult());
     }
 
     public void test_accessProxy_proxyHostAndPort_bypassed() {
@@ -205,7 +204,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
 
         // expect the proxy server to not be touched
-        assertEquals("Proxy server must be untouched", ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
+        assertEquals(ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
     }
 
     private static RequestData makeRequestData(final String url) {

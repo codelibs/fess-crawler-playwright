@@ -208,7 +208,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
         // Execute & Verify
         try {
             playwrightClientCreator.register(regexList, componentName);
-            fail("Expected IllegalStateException to be thrown");
+            fail();
         } catch (final IllegalStateException e) {
             assertEquals(
                     "CrawlerClientCreator component not found in the crawler container. Cannot register regex patterns for component: 'playwrightClient'. Please ensure the crawler container is properly initialized and 'crawlerClientCreator' is configured in the Spring XML configuration.",

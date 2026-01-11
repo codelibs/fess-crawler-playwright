@@ -306,7 +306,7 @@ public class PlaywrightClientPropertyTest extends PlainTestCase {
 
                 assertEquals(200, responseData.getHttpStatusCode());
                 // With 0 wait, should be relatively fast (no artificial delay)
-                assertTrue("Request should complete without excessive delay", duration < 10000);
+                assertTrue(duration < 10000);
             } finally {
                 server.stop();
             }
@@ -346,7 +346,7 @@ public class PlaywrightClientPropertyTest extends PlainTestCase {
 
                 assertEquals(200, responseData.getHttpStatusCode());
                 // Should have waited at least 500ms
-                assertTrue("Request should take at least 500ms", duration >= 500);
+                assertTrue(duration >= 500);
             } finally {
                 server.stop();
             }

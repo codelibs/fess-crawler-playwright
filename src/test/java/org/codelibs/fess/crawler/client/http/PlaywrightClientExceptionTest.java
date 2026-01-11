@@ -49,7 +49,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             playwrightClient.setBrowserName("invalid-browser");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.init();
-            fail("Expected CrawlerSystemException for invalid browser name");
+            fail();
         } catch (final CrawlerSystemException e) {
             assertTrue(e.getMessage().contains("Failed to create Playwright worker")
                     || e.getMessage().contains("Unsupported browser") || e.getMessage().contains("invalid-browser"));
@@ -67,7 +67,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             playwrightClient.setBrowserName("CHROMIUM");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.init();
-            fail("Expected CrawlerSystemException for uppercase browser name");
+            fail();
         } catch (final CrawlerSystemException e) {
             // Expected - browser names are case-sensitive
             assertNotNull(e.getMessage());
@@ -85,7 +85,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             playwrightClient.setBrowserName("");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.init();
-            fail("Expected exception for empty browser name");
+            fail();
         } catch (final Exception e) {
             // Expected exception
             assertNotNull(e);
@@ -115,7 +115,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
             final String url = "http://invalid-domain-that-does-not-exist-xyz123.com/";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected CrawlingAccessException for invalid URL");
+            fail();
         } catch (final CrawlingAccessException e) {
             assertTrue(e.getMessage().contains("Failed to access"));
         } finally {
@@ -142,7 +142,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
             final String url = "not-a-valid-url";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected exception for malformed URL");
+            fail();
         } catch (final Exception e) {
             // Expected exception
             assertNotNull(e);
@@ -173,7 +173,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             // Use a port that is likely not in use
             final String url = "http://127.0.0.1:59999/";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected CrawlingAccessException for connection refused");
+            fail();
         } catch (final CrawlingAccessException e) {
             assertTrue(e.getMessage().contains("Failed to access"));
         } finally {
@@ -274,7 +274,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             // Try to access a non-responding server
             final String url = "http://[::1]:59998/";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected CrawlingAccessException for timeout");
+            fail();
         } catch (final CrawlingAccessException e) {
             assertTrue(e.getMessage().contains("Failed to access"));
         } finally {
@@ -436,10 +436,10 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
             final String url = "http://127.0.0.1:59997/test";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected CrawlingAccessException");
+            fail();
         } catch (final CrawlingAccessException e) {
             // Exception message should contain URL information
-            assertTrue("Exception should contain URL", e.getMessage().contains("URL"));
+            assertTrue(e.getMessage().contains("URL"));
         } finally {
             playwrightClient.close();
         }
@@ -464,10 +464,10 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
             final String url = "http://127.0.0.1:59996/";
             playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail("Expected CrawlingAccessException");
+            fail();
         } catch (final CrawlingAccessException e) {
             // Exception message should contain timeout information
-            assertTrue("Exception should contain Timeout", e.getMessage().contains("Timeout"));
+            assertTrue(e.getMessage().contains("Timeout"));
         } finally {
             playwrightClient.close();
         }
