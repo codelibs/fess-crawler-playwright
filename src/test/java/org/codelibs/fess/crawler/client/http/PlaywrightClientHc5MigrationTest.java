@@ -120,7 +120,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
 
         // Verify the conversion is correct (within 1 second tolerance)
         assertTrue(expirySeconds > 0);
-        assertEquals(expiryInstant.getEpochSecond(), (long) expirySeconds, 1);
+        assertTrue(Math.abs(expiryInstant.getEpochSecond() - (long) expirySeconds) <= 1);
     }
 
     /**

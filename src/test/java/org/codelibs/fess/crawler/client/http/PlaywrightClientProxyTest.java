@@ -19,6 +19,7 @@ import java.io.File;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Optional;
@@ -43,10 +44,9 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
     private PlaywrightClientWithProxySettings playwrightClient;
 
-    @Override
     @BeforeEach
-    protected void setUp() throws Exception {
-        super.setUp();
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
 
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         this.proxyServer = new CrawlerWebProxy();
@@ -54,7 +54,6 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient = new PlaywrightClientWithProxySettings();
     }
 
-    @Override
     @AfterEach
     protected void tearDown() throws Exception {
         this.playwrightClient.close();
@@ -207,11 +206,11 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
     }
 
-    private static RequestData makeRequestData(final String url) {
+    private RequestData makeRequestData(final String url) {
         return RequestDataBuilder.newRequestData().get().url(url).build();
     }
 
-    private static void assertTextFileIsCorrect(final ResponseData responseData) {
+    private void assertTextFileIsCorrect(final ResponseData responseData) {
         assertEquals(200, responseData.getHttpStatusCode());
         assertEquals("GET", responseData.getMethod());
         assertEquals("UTF-8", responseData.getCharSet());
@@ -220,7 +219,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(25, responseData.getContentLength());
     }
 
-    private static String getBodyAsString(final ResponseData responseData) {
+    private String getBodyAsString(final ResponseData responseData) {
         try {
             return new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet());
         } catch (final UnsupportedEncodingException e) {

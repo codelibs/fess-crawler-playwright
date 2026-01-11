@@ -19,6 +19,7 @@ import java.util.Date;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 
 import org.dbflute.utflute.core.PlainTestCase;
 
@@ -30,14 +31,12 @@ public class PlaywrightClientInternalMethodTest extends PlainTestCase {
 
     private PlaywrightClient playwrightClient;
 
-    @Override
     @BeforeEach
-    protected void setUp() throws Exception {
-        super.setUp();
+    protected void setUp(final TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
         playwrightClient = new PlaywrightClient();
     }
 
-    @Override
     @AfterEach
     protected void tearDown() throws Exception {
         playwrightClient = null;
