@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.util;
 
+import org.junit.jupiter.api.Test;
+
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.codelibs.fess.crawler.util.CrawlerWebProxy.ProxyAccessStatus;
 import org.dbflute.utflute.core.PlainTestCase;
@@ -29,6 +31,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test setting credentials with HC5 UsernamePasswordCredentials.
      */
+    @Test
     public void test_setCredentials_hc5UsernamePasswordCredentials() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -44,6 +47,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test setting credentials with null UsernamePasswordCredentials.
      */
+    @Test
     public void test_setCredentials_nullCredentials() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -56,6 +60,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test setting credentials with username and password strings.
      */
+    @Test
     public void test_setCredentials_stringCredentials() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -67,6 +72,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test setting credentials with special characters in password.
      */
+    @Test
     public void test_setCredentials_specialCharactersInPassword() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -84,6 +90,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test setting port.
      */
+    @Test
     public void test_setPort() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -96,6 +103,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test getAccessResult initial state.
      */
+    @Test
     public void test_getAccessResult_initialState() {
         final CrawlerWebProxy proxy = new CrawlerWebProxy();
 
@@ -105,6 +113,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test ProxyAccessStatus enum values.
      */
+    @Test
     public void test_proxyAccessStatus_enumValues() {
         assertEquals(4, ProxyAccessStatus.values().length);
 
@@ -117,6 +126,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test UsernamePasswordCredentials password conversion from char[] to String.
      */
+    @Test
     public void test_usernamePasswordCredentials_passwordConversion() {
         final String originalPassword = "mySecretPassword";
         final UsernamePasswordCredentials credentials = new UsernamePasswordCredentials("user", originalPassword.toCharArray());
@@ -130,6 +140,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test UsernamePasswordCredentials with empty password.
      */
+    @Test
     public void test_usernamePasswordCredentials_emptyPassword() {
         final UsernamePasswordCredentials credentials = new UsernamePasswordCredentials("user", "".toCharArray());
 
@@ -140,6 +151,7 @@ public class CrawlerWebProxyTest extends PlainTestCase {
     /**
      * Test UsernamePasswordCredentials with unicode characters.
      */
+    @Test
     public void test_usernamePasswordCredentials_unicodeCharacters() {
         final String username = "用户";
         final String password = "密码123";

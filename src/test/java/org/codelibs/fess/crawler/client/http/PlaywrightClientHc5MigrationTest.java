@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -47,6 +49,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test that Hc5Authentication is correctly configured with char[] password.
      */
+    @Test
     public void test_hc5Authentication_charArrayPassword() {
         final String username = "testuser";
         final String password = "testpassword123!@#";
@@ -63,6 +66,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test that Hc5Authentication is correctly created with AuthScope.
      */
+    @Test
     public void test_hc5AuthenticationImpl_creation() {
         final AuthScope authScope = new AuthScope(null, -1); // Any host, any port
         final UsernamePasswordCredentials credentials = new UsernamePasswordCredentials("user", "pass".toCharArray());
@@ -81,6 +85,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test that AuthScheme.getName() returns correct scheme name for BasicScheme.
      */
+    @Test
     public void test_authScheme_getName_basic() {
         final BasicScheme basicScheme = new BasicScheme();
         assertEquals("Basic", basicScheme.getName());
@@ -89,6 +94,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test that PlaywrightClient correctly handles Hc5Authentication array.
      */
+    @Test
     public void test_playwrightClient_hc5AuthenticationConfiguration() {
         final PlaywrightClientWithTestableAuth playwrightClient = new PlaywrightClientWithTestableAuth();
 
@@ -111,6 +117,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
      * Test Cookie expiry time conversion from Instant to seconds.
      * HC5 uses Instant for cookie expiry, while Playwright uses seconds (double).
      */
+    @Test
     public void test_cookieExpiryInstant_conversion() {
         // Create an Instant representing a future time
         final Instant expiryInstant = Instant.now().plus(1, ChronoUnit.HOURS);
@@ -126,6 +133,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test Cookie expiry time conversion with null Instant.
      */
+    @Test
     public void test_cookieExpiryInstant_null() {
         final Instant expiryInstant = null;
 
@@ -141,6 +149,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test Playwright Cookie creation with HC5 cookie data.
      */
+    @Test
     public void test_playwrightCookie_fromHc5CookieData() {
         // Simulate HC5 cookie data
         final String name = "session_id";
@@ -171,6 +180,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test proxy credentials with HC5 UsernamePasswordCredentials.
      */
+    @Test
     public void test_proxyCredentials_hc5() {
         final String username = "proxyuser";
         final String password = "proxypass!@#$%";
@@ -185,6 +195,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test that PlaywrightClient correctly configures proxy with HC5 credentials.
      */
+    @Test
     public void test_playwrightClient_proxyWithHc5Credentials() {
         final PlaywrightClientWithProxyTest playwrightClient = new PlaywrightClientWithProxyTest();
 
@@ -206,6 +217,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test multiple authentication configurations with different schemes.
      */
+    @Test
     public void test_multipleAuthentications_mixedSchemes() {
         final List<Hc5Authentication> authList = new ArrayList<>();
 
@@ -231,6 +243,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test empty authentication array.
      */
+    @Test
     public void test_emptyAuthentications() {
         final Hc5Authentication[] authentications = new Hc5Authentication[0];
         assertEquals(0, authentications.length);
@@ -239,6 +252,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test AuthScope with null host (any host).
      */
+    @Test
     public void test_authScope_anyHost() {
         final AuthScope anyHostScope = new AuthScope(null, -1);
         assertNull(anyHostScope.getHost());
@@ -248,6 +262,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     /**
      * Test AuthScope with specific host and port.
      */
+    @Test
     public void test_authScope_specificHostPort() {
         final AuthScope specificScope = new AuthScope("localhost", 8080);
         assertEquals("localhost", specificScope.getHost());

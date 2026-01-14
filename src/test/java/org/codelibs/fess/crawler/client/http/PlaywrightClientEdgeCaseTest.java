@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.util.Date;
@@ -45,6 +47,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for getFilename with various edge cases.
      */
+    @Test
     public void test_getFilename_edgeCases() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
 
@@ -88,6 +91,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for parseDate with various formats.
      */
+    @Test
     public void test_parseDate_edgeCases() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
 
@@ -113,6 +117,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for accessing invalid URL.
      */
+    @Test
     public void test_execute_invalidUrl() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -143,6 +148,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for accessing URL with timeout.
      */
+    @Test
     public void test_execute_timeout() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -173,6 +179,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for various HTTP status codes.
      */
+    @Test
     public void test_execute_variousStatusCodes() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -205,7 +212,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
                     final String url = "http://[::1]:7079/notfound.html";
                     final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
                     assertEquals(404, responseData.getHttpStatusCode());
-                    assertEquals(0, responseData.getContentLength());
+                    assertEquals(0L, responseData.getContentLength());
                     assertEquals("", getBodyAsString(responseData));
                 }
             } finally {
@@ -219,6 +226,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for HEAD request with various content types.
      */
+    @Test
     public void test_execute_headRequest() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -275,6 +283,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for concurrent requests (sequential execution due to page lock).
      */
+    @Test
     public void test_execute_concurrentRequests() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -311,6 +320,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for response with special characters in content.
      */
+    @Test
     public void test_execute_specialCharacters() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -346,6 +356,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for response with empty body.
      */
+    @Test
     public void test_execute_emptyBody() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -369,7 +380,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
                 final String url = "http://[::1]:7083/notfound.html";
                 final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
                 assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals(0, responseData.getContentLength());
+                assertEquals(0L, responseData.getContentLength());
                 assertNotNull(responseData.getResponseBody());
                 assertEquals("", getBodyAsString(responseData));
             } finally {
@@ -383,6 +394,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for multiple file types in sequence.
      */
+    @Test
     public void test_execute_multipleFileTypes() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -444,6 +456,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for metadata extraction from response headers.
      */
+    @Test
     public void test_execute_metadataExtraction() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -484,6 +497,7 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     /**
      * Test for lastModified date handling.
      */
+    @Test
     public void test_execute_lastModified() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {

@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
@@ -47,6 +49,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for Chromium browser type (default).
      */
+    @Test
     public void test_browserType_chromium() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -81,6 +84,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for Firefox browser type.
      */
+    @Test
     public void test_browserType_firefox() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -115,6 +119,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for Webkit browser type.
      */
+    @Test
     public void test_browserType_webkit() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -149,6 +154,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for invalid browser type.
      */
+    @Test
     public void test_browserType_invalid() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -184,6 +190,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for renderedState configuration with LOAD state.
      */
+    @Test
     public void test_renderedState_load() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -219,6 +226,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for renderedState configuration with DOMCONTENTLOADED state.
      */
+    @Test
     public void test_renderedState_domContentLoaded() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -254,6 +262,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for renderedState configuration with NETWORKIDLE state.
      */
+    @Test
     public void test_renderedState_networkIdle() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -289,6 +298,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for contentWaitDuration configuration.
      */
+    @Test
     public void test_contentWaitDuration() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -329,6 +339,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for setRenderedState method.
      */
+    @Test
     public void test_setRenderedState() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -346,6 +357,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for setDownloadTimeout method.
      */
+    @Test
     public void test_setDownloadTimeout() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -363,6 +375,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for setCloseTimeout method.
      */
+    @Test
     public void test_setCloseTimeout() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -380,6 +393,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for addOption method.
      */
+    @Test
     public void test_addOption() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -404,6 +418,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for multiple init calls (should skip subsequent calls).
      */
+    @Test
     public void test_multipleInitCalls() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -422,6 +437,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for sharedClient configuration.
      */
+    @Test
     public void test_sharedClient_enabled() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient client1 = new PlaywrightClient() {
@@ -462,6 +478,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for close when worker is null.
      */
+    @Test
     public void test_close_whenWorkerIsNull() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         // Should not throw exception when closing without init
@@ -471,6 +488,7 @@ public class PlaywrightClientConfigTest extends PlainTestCase {
     /**
      * Test for execute with auto-init.
      */
+    @Test
     public void test_execute_autoInit() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {

@@ -18,8 +18,7 @@ package org.codelibs.fess.crawler.client.http;
 import java.io.File;
 import java.io.UnsupportedEncodingException;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import java.util.HashMap;
 import java.util.Optional;
@@ -41,7 +40,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
 
     private PlaywrightClientWithSslSettings playwrightClient;
 
-    @BeforeEach
+    @Override
     protected void setUp(final TestInfo testInfo) throws Exception {
         super.setUp(testInfo);
 
@@ -50,14 +49,15 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient = new PlaywrightClientWithSslSettings();
     }
 
-    @AfterEach
-    protected void tearDown() throws Exception {
+    @Override
+    protected void tearDown(final TestInfo testInfo) throws Exception {
         this.playwrightClient.close();
         this.crawlerWebServer.stop();
 
-        super.tearDown();
+        super.tearDown(testInfo);
     }
 
+    @Test
     public void test_ensureClientThrowsErrors() {
         // start web server & client
         this.crawlerWebServer.start();
@@ -75,6 +75,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         }
     }
 
+    @Test
     public void test_ignoreSslCertificate() {
         // start web server & client
         this.crawlerWebServer.start();
@@ -88,6 +89,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
     }
 
+    @Test
     public void test_ignoreHttpsErrors() {
         // start web server & client
         this.crawlerWebServer.start();
@@ -101,6 +103,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         assertTextFileIsCorrect(responseData);
     }
 
+    @Test
     public void test_bothOptionsEnabled() {
         // start web server & client
         this.crawlerWebServer.start();
@@ -125,7 +128,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         assertEquals("UTF-8", responseData.getCharSet());
         assertEquals("text/plain", responseData.getMimeType());
         assertEquals("This is a test document.", getBodyAsString(responseData).trim());
-        assertEquals(25, responseData.getContentLength());
+        assertEquals(25L, responseData.getContentLength());
     }
 
     private String getBodyAsString(final ResponseData responseData) {

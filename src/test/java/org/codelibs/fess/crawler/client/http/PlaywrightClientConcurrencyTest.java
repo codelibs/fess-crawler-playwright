@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,6 +53,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test multiple sequential requests with same client.
      */
+    @Test
     public void test_sequentialRequests_sameClient() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -87,6 +90,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test sequential requests to different URLs.
      */
+    @Test
     public void test_sequentialRequests_differentUrls() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -107,26 +111,26 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
                 server.start();
 
                 // HTML
-                ResponseData responseData = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/").build());
+                ResponseData responseData =
+                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/").build());
                 assertEquals(200, responseData.getHttpStatusCode());
                 assertEquals("text/html", responseData.getMimeType());
 
                 // Text
-                responseData = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.txt").build());
+                responseData =
+                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.txt").build());
                 assertEquals(200, responseData.getHttpStatusCode());
                 assertEquals("text/plain", responseData.getMimeType());
 
                 // JSON
-                responseData = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.json").build());
+                responseData =
+                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.json").build());
                 assertEquals(200, responseData.getHttpStatusCode());
                 assertEquals("application/json", responseData.getMimeType());
 
                 // Image
-                responseData = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.png").build());
+                responseData =
+                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7301/test.png").build());
                 assertEquals(200, responseData.getHttpStatusCode());
                 assertEquals("image/png", responseData.getMimeType());
             } finally {
@@ -143,6 +147,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
      * Test concurrent requests from multiple threads using same client.
      * Due to page synchronization, requests should be processed sequentially.
      */
+    @Test
     public void test_concurrentRequests_sameClient() throws Exception {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -215,6 +220,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test multiple independent clients executing concurrently.
      */
+    @Test
     public void test_concurrentRequests_multipleClients() throws Exception {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7303, docRootDir);
@@ -241,8 +247,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
                         client.init();
 
                         final String url = "http://[::1]:7303/";
-                        final ResponseData responseData =
-                                client.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                        final ResponseData responseData = client.execute(RequestDataBuilder.newRequestData().get().url(url).build());
                         return responseData.getHttpStatusCode() == 200;
                     } finally {
                         client.close();
@@ -272,6 +277,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test shared client with multiple instances.
      */
+    @Test
     public void test_sharedClient_multipleInstances() throws Exception {
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         final CrawlerWebServer server = new CrawlerWebServer(7304, docRootDir);
@@ -323,6 +329,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test concurrent init calls on same client instance.
      */
+    @Test
     public void test_concurrentInit_sameInstance() throws Exception {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
 
@@ -370,6 +377,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test that page is properly reset between requests.
      */
+    @Test
     public void test_pageReset_betweenRequests() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -390,20 +398,18 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
                 server.start();
 
                 // Request 1 - HTML
-                ResponseData response = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/").build());
+                ResponseData response =
+                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/").build());
                 assertEquals(200, response.getHttpStatusCode());
                 assertEquals("text/html", response.getMimeType());
 
                 // Request 2 - PDF (different content type)
-                response = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/test.pdf").build());
+                response = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/test.pdf").build());
                 assertEquals(200, response.getHttpStatusCode());
                 assertEquals("application/pdf", response.getMimeType());
 
                 // Request 3 - HTML again
-                response = playwrightClient
-                        .execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/").build());
+                response = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7305/").build());
                 assertEquals(200, response.getHttpStatusCode());
                 assertEquals("text/html", response.getMimeType());
             } finally {
@@ -419,6 +425,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test that event handlers are properly cleaned up.
      */
+    @Test
     public void test_handlerCleanup_afterMultipleRequests() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -460,6 +467,7 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
     /**
      * Test many sequential requests (stress test).
      */
+    @Test
     public void test_stressTest_manySequentialRequests() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {

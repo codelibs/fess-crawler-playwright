@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -45,6 +47,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test HTML response with UTF-8 charset.
      */
+    @Test
     public void test_htmlResponse_utf8() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -84,6 +87,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test HTML response extracts rendered content.
      */
+    @Test
     public void test_htmlResponse_renderedContent() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -124,6 +128,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test plain text response.
      */
+    @Test
     public void test_textResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -163,6 +168,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test JSON response.
      */
+    @Test
     public void test_jsonResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -202,6 +208,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test PDF response (binary).
      */
+    @Test
     public void test_pdfResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -237,6 +244,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test PNG image response (binary).
      */
+    @Test
     public void test_pngResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -272,6 +280,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test JPEG image response (binary).
      */
+    @Test
     public void test_jpgResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -307,6 +316,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test GIF image response (binary).
      */
+    @Test
     public void test_gifResponse() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -344,6 +354,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test ZIP file download.
      */
+    @Test
     public void test_zipDownload() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -379,6 +390,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test DOCX file download.
      */
+    @Test
     public void test_docxDownload() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -414,6 +426,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test EPUB file download.
      */
+    @Test
     public void test_epubDownload() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -451,6 +464,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test response headers are captured in metadata.
      */
+    @Test
     public void test_responseMetadata() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -489,6 +503,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test last-modified header is parsed.
      */
+    @Test
     public void test_lastModifiedHeader() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -530,6 +545,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test content length is correctly reported.
      */
+    @Test
     public void test_contentLength() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -554,7 +570,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
                 final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
                 assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals(25, responseData.getContentLength());
+                assertEquals(25L, responseData.getContentLength());
             } finally {
                 server.stop();
             }
@@ -566,6 +582,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test content length for HTML response.
      */
+    @Test
     public void test_contentLength_html() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -603,6 +620,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test response body is accessible as InputStream.
      */
+    @Test
     public void test_responseBody_asInputStream() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -645,6 +663,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test HEAD request returns no body.
      */
+    @Test
     public void test_headRequest_noBody() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -681,6 +700,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test HEAD request for various file types.
      */
+    @Test
     public void test_headRequest_variousFileTypes() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -737,6 +757,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test 404 response has empty body.
      */
+    @Test
     public void test_404Response_emptyBody() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -760,7 +781,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
                 final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
                 assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals(0, responseData.getContentLength());
+                assertEquals(0L, responseData.getContentLength());
                 assertNotNull(responseData.getResponseBody());
 
                 final String body = getBodyAsString(responseData);
@@ -778,6 +799,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test URL is correctly set in response.
      */
+    @Test
     public void test_responseUrl() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -813,6 +835,7 @@ public class PlaywrightClientDataTest extends PlainTestCase {
     /**
      * Test method is correctly set in response.
      */
+    @Test
     public void test_responseMethod() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {

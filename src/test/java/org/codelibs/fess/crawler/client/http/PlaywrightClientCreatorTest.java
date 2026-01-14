@@ -17,7 +17,7 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.util.ArrayList;
 
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import java.util.Arrays;
 import java.util.List;
@@ -35,7 +35,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
 
     private PlaywrightClientCreator playwrightClientCreator;
 
-    @BeforeEach
+    @Override
     protected void setUp(final TestInfo testInfo) throws Exception {
         super.setUp(testInfo);
         playwrightClientCreator = new PlaywrightClientCreator();
@@ -44,6 +44,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method with valid regexList and componentName.
      */
+    @Test
     public void test_register_withValidParameters() {
         // Setup
         final List<String> regexList = Arrays.asList("https?://.*", "http://example\\.com/.*");
@@ -91,6 +92,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method with empty regexList.
      */
+    @Test
     public void test_register_withEmptyRegexList() {
         // Setup
         final List<String> regexList = new ArrayList<>();
@@ -136,6 +138,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method with single regex pattern.
      */
+    @Test
     public void test_register_withSinglePattern() {
         // Setup
         final List<String> regexList = Arrays.asList("https://secure\\.example\\.com/.*");
@@ -182,6 +185,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method when CrawlerClientCreator is not found.
      */
+    @Test
     public void test_register_throwsException_whenCreatorNotFound() {
         // Setup
         final List<String> regexList = Arrays.asList("https?://.*");
@@ -219,6 +223,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method with multiple regex patterns.
      */
+    @Test
     public void test_register_withMultiplePatterns() {
         // Setup
         final List<String> regexList = Arrays.asList("https?://www\\.example\\.com/.*", "https?://api\\.example\\.com/.*",
@@ -269,6 +274,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for register method with special characters in regex patterns.
      */
+    @Test
     public void test_register_withSpecialCharactersInPattern() {
         // Setup
         final List<String> regexList = Arrays.asList("https?://[a-z0-9]+\\.example\\.com/.*", "https?://example\\.com/path/[0-9]+/.*",
@@ -318,6 +324,7 @@ public class PlaywrightClientCreatorTest extends PlainTestCase {
     /**
      * Test for constructor.
      */
+    @Test
     public void test_constructor() {
         // Verify that constructor creates a valid instance
         final PlaywrightClientCreator creator = new PlaywrightClientCreator();
