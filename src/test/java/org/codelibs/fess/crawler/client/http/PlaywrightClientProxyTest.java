@@ -17,8 +17,7 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.io.File;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
@@ -44,7 +43,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
     private PlaywrightClientWithProxySettings playwrightClient;
 
-    @BeforeEach
+    @Override
     protected void setUp(final TestInfo testInfo) throws Exception {
         super.setUp(testInfo);
 
@@ -54,15 +53,16 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient = new PlaywrightClientWithProxySettings();
     }
 
-    @AfterEach
-    protected void tearDown() throws Exception {
+    @Override
+    protected void tearDown(final TestInfo testInfo) throws Exception {
         this.playwrightClient.close();
         this.proxyServer.stop();
         this.crawlerWebServer.stop();
 
-        super.tearDown();
+        super.tearDown(testInfo);
     }
 
+    @Test
     public void test_accessProxy_noProxyConfig() {
         // setup server
         this.crawlerWebServer.start();
@@ -78,6 +78,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.NOT_ACCESSED, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_separatedProxyHostAndPort_noAuth() {
         // setup server
         this.crawlerWebServer.start();
@@ -98,6 +99,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_combinedProxyHostAndPort_noAuth() {
         // setup server
         this.crawlerWebServer.start();
@@ -117,6 +119,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_proxyHostAndPort_correctAuth() {
         // setup server
         final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$".toCharArray());
@@ -140,6 +143,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.ACCESS_GRANTED, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_proxyHostAndPort_missingRequiredAuth() {
         // setup server
         final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$".toCharArray());
@@ -162,6 +166,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.PROMPTED_FOR_CREDENTIALS, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_proxyHostAndPort_incorrectAuth() {
         // setup server
         final var apacheCredentials = new UsernamePasswordCredentials("username", "Passw0rd!@#$".toCharArray());
@@ -185,6 +190,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals(ProxyAccessStatus.ACCESS_DENIED, this.proxyServer.getAccessResult());
     }
 
+    @Test
     public void test_accessProxy_proxyHostAndPort_bypassed() {
         // setup server
         this.crawlerWebServer.start();
@@ -216,7 +222,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         assertEquals("UTF-8", responseData.getCharSet());
         assertEquals("text/plain", responseData.getMimeType());
         assertEquals("This is a test document.", getBodyAsString(responseData).trim());
-        assertEquals(25, responseData.getContentLength());
+        assertEquals(25L, responseData.getContentLength());
     }
 
     private String getBodyAsString(final ResponseData responseData) {

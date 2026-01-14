@@ -30,8 +30,7 @@ package org.codelibs.fess.crawler.client.http;
 
 import java.io.UnsupportedEncodingException;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -64,7 +63,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
 
     private PlaywrightClientWithAuthSettings playwrightClient;
 
-    @BeforeEach
+    @Override
     protected void setUp(final TestInfo testInfo) throws Exception {
         super.setUp(testInfo);
 
@@ -72,14 +71,15 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.playwrightClient = new PlaywrightClientWithAuthSettings();
     }
 
-    @AfterEach
-    protected void tearDown() throws Exception {
+    @Override
+    protected void tearDown(final TestInfo testInfo) throws Exception {
         this.playwrightClient.close();
         this.authServer.stop();
 
-        super.tearDown();
+        super.tearDown(testInfo);
     }
 
+    @Test
     public void test_crawler_basicAuth() {
         // prepare server
         this.authServer.addUser("user", "password");
@@ -97,6 +97,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         assertAuthSuccessful(response);
     }
 
+    @Test
     public void test_crawler_digestAuth() {
         // prepare server
         this.authServer.addUser("user", "password");
@@ -114,6 +115,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         assertAuthSuccessful(response);
     }
 
+    @Test
     public void test_crawler_formAuth() {
         // prepare server
         this.authServer.addUser("user", "password");

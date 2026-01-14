@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.util.Optional;
 
@@ -43,6 +45,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that invalid browser name throws CrawlerSystemException.
      */
+    @Test
     public void test_init_invalidBrowserName() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -51,8 +54,8 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             playwrightClient.init();
             fail();
         } catch (final CrawlerSystemException e) {
-            assertTrue(e.getMessage().contains("Failed to create Playwright worker")
-                    || e.getMessage().contains("Unsupported browser") || e.getMessage().contains("invalid-browser"));
+            assertTrue(e.getMessage().contains("Failed to create Playwright worker") || e.getMessage().contains("Unsupported browser")
+                    || e.getMessage().contains("invalid-browser"));
         } finally {
             playwrightClient.close();
         }
@@ -61,6 +64,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that uppercase browser name is handled.
      */
+    @Test
     public void test_init_uppercaseBrowserName() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -79,6 +83,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that empty browser name throws exception.
      */
+    @Test
     public void test_init_emptyBrowserName() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -99,6 +104,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test accessing invalid URL throws CrawlingAccessException.
      */
+    @Test
     public void test_execute_invalidUrl() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -126,6 +132,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test accessing malformed URL.
      */
+    @Test
     public void test_execute_malformedUrl() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -156,6 +163,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test accessing URL with connection refused.
      */
+    @Test
     public void test_execute_connectionRefused() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -186,6 +194,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test 404 Not Found response.
      */
+    @Test
     public void test_execute_status404() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -208,7 +217,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
                 final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
                 assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals(0, responseData.getContentLength());
+                assertEquals(0L, responseData.getContentLength());
             } finally {
                 server.stop();
             }
@@ -220,6 +229,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that status codes > 400 return empty body.
      */
+    @Test
     public void test_execute_errorStatusReturnsEmptyBody() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -242,7 +252,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
                 final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
                 assertTrue(responseData.getHttpStatusCode() >= 400);
-                assertEquals(0, responseData.getContentLength());
+                assertEquals(0L, responseData.getContentLength());
                 assertNotNull(responseData.getResponseBody());
             } finally {
                 server.stop();
@@ -257,6 +267,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test with very short download timeout.
      */
+    @Test
     public void test_execute_shortDownloadTimeout() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -287,6 +298,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test close with very short timeout.
      */
+    @Test
     public void test_close_shortTimeout() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -304,6 +316,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test execute triggers auto-init when worker is null.
      */
+    @Test
     public void test_execute_autoInitOnNullWorker() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -336,6 +349,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test close after close (should not throw).
      */
+    @Test
     public void test_close_afterClose() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
@@ -351,6 +365,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test init after close (re-initialization).
      */
+    @Test
     public void test_init_afterClose() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -399,6 +414,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test multiple init calls (should be idempotent).
      */
+    @Test
     public void test_init_multipleCalls() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
@@ -420,6 +436,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that exception messages contain useful information.
      */
+    @Test
     public void test_exception_messageContainsUrl() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
@@ -448,6 +465,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     /**
      * Test that exception messages contain timeout information.
      */
+    @Test
     public void test_exception_messageContainsTimeout() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
