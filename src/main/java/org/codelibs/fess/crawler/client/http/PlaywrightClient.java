@@ -320,14 +320,23 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return;
         }
 
+        // Check if we're closing a shared worker
+        final boolean isSharedWorker = (worker == SHARED_WORKER);
+
         if (logger.isDebugEnabled()) {
-            logger.debug("Initiating Playwright worker cleanup");
+            logger.debug("Initiating Playwright worker cleanup (shared: {})", isSharedWorker);
         }
 
         try {
             close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
         } finally {
             worker = null;
+            // Reset SHARED_WORKER so next init() creates a fresh instance
+            if (isSharedWorker) {
+                synchronized (INITIALIZATION_LOCK) {
+                    SHARED_WORKER = null;
+                }
+            }
         }
 
         if (logger.isDebugEnabled()) {

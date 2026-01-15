@@ -74,6 +74,11 @@
 			</plugin>
 			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<parallel>classes</parallel>
+					<threadCount>4</threadCount>
+					<perCoreThreadCount>true</perCoreThreadCount>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.jacoco</groupId>
