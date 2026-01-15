@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -39,6 +41,24 @@ import com.microsoft.playwright.BrowserType;
 public class PlaywrightClientExceptionTest extends PlainTestCase {
 
     private static final boolean HEADLESS = true;
+    private static final int SERVER_PORT = 7200;
+
+    private static CrawlerWebServer sharedServer;
+    private static File docRootDir;
+
+    @BeforeAll
+    static void setUpClass() {
+        docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        sharedServer = new CrawlerWebServer(SERVER_PORT, docRootDir);
+        sharedServer.start();
+    }
+
+    @AfterAll
+    static void tearDownClass() {
+        if (sharedServer != null) {
+            sharedServer.stop();
+        }
+    }
 
     // ==================== Invalid browser name tests ====================
 
@@ -51,6 +71,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setBrowserName("invalid-browser");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
             fail();
         } catch (final CrawlerSystemException e) {
@@ -70,6 +91,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setBrowserName("CHROMIUM");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
             fail();
         } catch (final CrawlerSystemException e) {
@@ -89,6 +111,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setBrowserName("");
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
             fail();
         } catch (final Exception e) {
@@ -117,6 +140,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(2);
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             final String url = "http://invalid-domain-that-does-not-exist-xyz123.com/";
@@ -145,6 +169,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(2);
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             final String url = "not-a-valid-url";
@@ -176,6 +201,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(2);
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             // Use a port that is likely not in use
@@ -206,21 +232,14 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7200, docRootDir);
+            final String url = "http://[::1]:" + SERVER_PORT + "/nonexistent.html";
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-            try {
-                server.start();
-                final String url = "http://[::1]:7200/nonexistent.html";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals(0L, responseData.getContentLength());
-            } finally {
-                server.stop();
-            }
+            assertEquals(404, responseData.getHttpStatusCode());
+            assertEquals(0L, responseData.getContentLength());
         } finally {
             playwrightClient.close();
         }
@@ -241,22 +260,15 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7201, docRootDir);
+            final String url = "http://[::1]:" + SERVER_PORT + "/does-not-exist.xyz";
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-            try {
-                server.start();
-                final String url = "http://[::1]:7201/does-not-exist.xyz";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertTrue(responseData.getHttpStatusCode() >= 400);
-                assertEquals(0L, responseData.getContentLength());
-                assertNotNull(responseData.getResponseBody());
-            } finally {
-                server.stop();
-            }
+            assertTrue(responseData.getHttpStatusCode() >= 400);
+            assertEquals(0L, responseData.getContentLength());
+            assertNotNull(responseData.getResponseBody());
         } finally {
             playwrightClient.close();
         }
@@ -280,6 +292,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(1); // 1 second timeout
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             // Try to access a non-responding server
@@ -328,19 +341,12 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
             // Don't call init() - execute should auto-init
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7202, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7202/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                assertEquals(200, responseData.getHttpStatusCode());
-            } finally {
-                server.stop();
-            }
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
         } finally {
             playwrightClient.close();
         }
@@ -353,6 +359,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     public void test_close_afterClose() {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+        playwrightClient.setCloseTimeout(5);
         playwrightClient.init();
 
         playwrightClient.close();
@@ -377,33 +384,25 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
 
             // First init
             playwrightClient.init();
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7203, docRootDir);
+            // First request
+            String url = "http://[::1]:" + SERVER_PORT + "/";
+            ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
 
-            try {
-                server.start();
+            // Close
+            playwrightClient.close();
 
-                // First request
-                String url = "http://[::1]:7203/";
-                ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                assertEquals(200, responseData.getHttpStatusCode());
+            // Re-init
+            playwrightClient.init();
 
-                // Close
-                playwrightClient.close();
-
-                // Re-init
-                playwrightClient.init();
-
-                // Second request after re-init
-                responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-                assertEquals(200, responseData.getHttpStatusCode());
-            } finally {
-                server.stop();
-            }
+            // Second request after re-init
+            responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
         } finally {
             playwrightClient.close();
         }
@@ -419,6 +418,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         final PlaywrightClient playwrightClient = new PlaywrightClient();
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
 
             playwrightClient.init();
             playwrightClient.init(); // Should skip
@@ -449,6 +449,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(2);
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             final String url = "http://127.0.0.1:59997/test";
@@ -478,6 +479,7 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
             playwrightClient.setDownloadTimeout(3);
+            playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             final String url = "http://127.0.0.1:59996/";

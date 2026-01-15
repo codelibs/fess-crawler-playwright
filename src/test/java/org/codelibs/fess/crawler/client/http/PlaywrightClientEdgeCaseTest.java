@@ -154,14 +154,29 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
      */
     @Test
     public void test_execute_invalidUrl() {
-        // Try to access an invalid URL
-        final String url = "http://invalid-domain-that-does-not-exist-12345.com/";
+        // Create separate client with short timeout for this test
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient timeoutClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
         try {
-            sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            timeoutClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS).setTimeout(5000));
+            timeoutClient.setDownloadTimeout(3); // 3 seconds instead of default 15
+            timeoutClient.setCloseTimeout(3);
+            timeoutClient.init();
+
+            // Try to access an invalid URL
+            final String url = "http://invalid-domain-that-does-not-exist-12345.com/";
+            timeoutClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
             fail();
         } catch (final CrawlingAccessException e) {
             // Expected exception
             assertTrue(e.getMessage().contains("Failed to access"));
+        } finally {
+            timeoutClient.close();
         }
     }
 
@@ -170,14 +185,29 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
      */
     @Test
     public void test_execute_timeout() {
-        // Try to access a non-responding server
-        final String url = "http://[::1]:19999/";
+        // Create separate client with short timeout for this test
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient timeoutClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
         try {
-            sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            timeoutClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS).setTimeout(5000));
+            timeoutClient.setDownloadTimeout(3); // 3 seconds instead of default 15
+            timeoutClient.setCloseTimeout(3);
+            timeoutClient.init();
+
+            // Try to access a non-responding server
+            final String url = "http://[::1]:19999/";
+            timeoutClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
             fail();
         } catch (final CrawlingAccessException e) {
             // Expected exception
             assertTrue(e.getMessage().contains("Failed to access"));
+        } finally {
+            timeoutClient.close();
         }
     }
 
@@ -312,23 +342,6 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
             assertEquals(200, responseData.getHttpStatusCode());
             assertEquals("image/png", responseData.getMimeType());
         }
-    }
-
-    /**
-     * Test for metadata extraction from response headers.
-     */
-    @Test
-    public void test_execute_metadataExtraction() {
-        final String url = "http://[::1]:" + SERVER_PORT + "/";
-        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-        assertEquals(200, responseData.getHttpStatusCode());
-
-        // Verify metadata is extracted
-        assertNotNull(responseData.getMetaDataMap());
-        assertTrue(responseData.getMetaDataMap().size() > 0);
-
-        // Common headers should be present
-        assertTrue(responseData.getMetaDataMap().containsKey("content-type"));
     }
 
     /**

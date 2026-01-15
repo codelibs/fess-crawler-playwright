@@ -13,19 +13,6 @@
  * either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
-/*
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
- * either express or implied. See the License for the specific language
- * governing permissions and limitations under the License.
- */
 package org.codelibs.fess.crawler.client.http;
 
 import java.io.UnsupportedEncodingException;
@@ -68,6 +55,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         super.setUp(testInfo);
 
         this.authServer = new CrawlerAuthenticationServer();
+        this.authServer.setPort(7030);
         this.playwrightClient = new PlaywrightClientWithAuthSettings();
     }
 
@@ -91,7 +79,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         basicAuthConfig.setAuthScheme(new BasicScheme());
         this.playwrightClient.addAuthentication(basicAuthConfig);
 
-        final String url = "http://[::1]:7070/";
+        final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
@@ -109,7 +97,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         digestAuthConfig.setAuthScheme(new DigestScheme());
         this.playwrightClient.addAuthentication(digestAuthConfig);
 
-        final String url = "http://[::1]:7070/";
+        final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
@@ -125,14 +113,14 @@ public class PlaywrightAuthTest extends PlainTestCase {
         final var formAuthConfig =
                 new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
-                "http://[::1]:7070/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
-                "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7070/j_security_check", "login_parameters",
+                "http://[::1]:7030/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
+                "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7030/j_security_check", "login_parameters",
                 "j_username=${username}&j_password=${password}");
         final var formScheme = new Hc5FormScheme(formSchemeConfiguration);
         formAuthConfig.setAuthScheme(formScheme);
         this.playwrightClient.addAuthentication(formAuthConfig);
 
-        final String url = "http://[::1]:7070/";
+        final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
 
         assertAuthSuccessful(response);
