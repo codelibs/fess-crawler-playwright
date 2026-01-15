@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -116,6 +117,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected static volatile Tuple4<Playwright, Browser, BrowserContext, Page> SHARED_WORKER = null;
 
     /**
+     * Reference count for SHARED_WORKER. Tracks how many clients are using the shared worker.
+     */
+    private static final AtomicInteger SHARED_WORKER_REF_COUNT = new AtomicInteger(0);
+
+    /**
      * The key to specify a shared client.
      */
     protected static final String SHARED_CLIENT = "sharedClient";
@@ -191,6 +197,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
     /**
+     * Flag indicating whether this instance is using the shared worker.
+     * Used to prevent duplicate increment/decrement of reference count.
+     */
+    private volatile boolean usingSharedWorker = false;
+
+    /**
      * The crawler container instance.
      */
     @Resource
@@ -242,10 +254,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                     SHARED_WORKER = createPlaywrightWorker();
                 }
-                logger.info("Use a shared Playwright worker.");
+                final int refCount = SHARED_WORKER_REF_COUNT.incrementAndGet();
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Shared worker reference count incremented to: {}", refCount);
+                }
+                usingSharedWorker = true;
+                logger.info("Use a shared Playwright worker. (refCount={})", refCount);
                 worker = SHARED_WORKER;
             } else {
                 worker = createPlaywrightWorker();
+                usingSharedWorker = false;
             }
 
             if (logger.isDebugEnabled()) {
@@ -320,23 +338,39 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return;
         }
 
-        // Check if we're closing a shared worker
-        final boolean isSharedWorker = (worker == SHARED_WORKER);
+        final boolean isSharedWorker = usingSharedWorker;
 
         if (logger.isDebugEnabled()) {
             logger.debug("Initiating Playwright worker cleanup (shared: {})", isSharedWorker);
         }
 
         try {
-            close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
-        } finally {
-            worker = null;
-            // Reset SHARED_WORKER so next init() creates a fresh instance
             if (isSharedWorker) {
                 synchronized (INITIALIZATION_LOCK) {
-                    SHARED_WORKER = null;
+                    final int refCount = SHARED_WORKER_REF_COUNT.decrementAndGet();
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Shared worker reference count decremented to: {}", refCount);
+                    }
+
+                    if (refCount <= 0) {
+                        if (logger.isInfoEnabled()) {
+                            logger.info("No more references to shared worker, closing resources");
+                        }
+                        close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
+                        SHARED_WORKER = null;
+                        SHARED_WORKER_REF_COUNT.set(0);
+                    } else {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Shared worker still in use by {} other client(s), not closing", refCount);
+                        }
+                    }
                 }
+            } else {
+                close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
             }
+        } finally {
+            worker = null;
+            usingSharedWorker = false;
         }
 
         if (logger.isDebugEnabled()) {

@@ -49,7 +49,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
 
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
         this.proxyServer = new CrawlerWebProxy();
-        this.crawlerWebServer = new CrawlerWebServer(7070, docRootDir);
+        this.crawlerWebServer = new CrawlerWebServer(7010, docRootDir);
         this.playwrightClient = new PlaywrightClientWithProxySettings();
     }
 
@@ -70,7 +70,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -91,7 +91,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -111,7 +111,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -135,7 +135,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 
@@ -158,7 +158,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertEquals(407, responseData.getHttpStatusCode());
 
@@ -182,7 +182,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertEquals(401, responseData.getHttpStatusCode());
 
@@ -204,7 +204,7 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "http://[::1]:7070/test.txt";
+        final String url = "http://[::1]:7010/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
 

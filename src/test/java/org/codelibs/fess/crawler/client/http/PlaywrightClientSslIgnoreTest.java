@@ -45,7 +45,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         super.setUp(testInfo);
 
         final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-        this.crawlerWebServer = new CrawlerWebServer(7070, docRootDir, true);
+        this.crawlerWebServer = new CrawlerWebServer(7020, docRootDir, true);
         this.playwrightClient = new PlaywrightClientWithSslSettings();
     }
 
@@ -65,12 +65,12 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
 
         // evaluate
         try {
-            final String url = "https://[::1]:7070/test.txt";
+            final String url = "https://[::1]:7020/test.txt";
             this.playwrightClient.execute(makeRequestData(url));
             fail();
         } catch (final CrawlerSystemException e) {
             assertEquals(
-                    "Failed to access the URL. URL: https://[::1]:7070/test.txt, Response received: false, Download started: false, Timeout: 15s",
+                    "Failed to access the URL. URL: https://[::1]:7020/test.txt, Response received: false, Download started: false, Timeout: 15s",
                     e.getMessage());
         }
     }
@@ -84,7 +84,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://[::1]:7070/test.txt";
+        final String url = "https://[::1]:7020/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }
@@ -98,7 +98,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://[::1]:7070/test.txt";
+        final String url = "https://[::1]:7020/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }
@@ -113,7 +113,7 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
         this.playwrightClient.init();
 
         // evaluate
-        final String url = "https://[::1]:7070/test.txt";
+        final String url = "https://[::1]:7020/test.txt";
         final ResponseData responseData = this.playwrightClient.execute(makeRequestData(url));
         assertTextFileIsCorrect(responseData);
     }

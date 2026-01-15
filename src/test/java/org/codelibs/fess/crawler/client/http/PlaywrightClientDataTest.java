@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -41,6 +43,39 @@ import com.microsoft.playwright.BrowserType;
 public class PlaywrightClientDataTest extends PlainTestCase {
 
     private static final boolean HEADLESS = true;
+    private static final int SERVER_PORT = 7130;
+
+    private static PlaywrightClient sharedClient;
+    private static CrawlerWebServer sharedServer;
+    private static File docRootDir;
+
+    @BeforeAll
+    static void setUpClass() {
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        sharedClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
+        sharedClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+        sharedClient.setCloseTimeout(5);
+        sharedClient.init();
+
+        docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
+        sharedServer = new CrawlerWebServer(SERVER_PORT, docRootDir);
+        sharedServer.start();
+    }
+
+    @AfterAll
+    static void tearDownClass() {
+        if (sharedServer != null) {
+            sharedServer.stop();
+        }
+        if (sharedClient != null) {
+            sharedClient.close();
+        }
+    }
 
     // ==================== HTML content tests ====================
 
@@ -49,39 +84,16 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_htmlResponse_utf8() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("text/html", responseData.getMimeType());
+        assertEquals("UTF-8", responseData.getCharSet());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7500, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7500/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("text/html", responseData.getMimeType());
-                assertEquals("UTF-8", responseData.getCharSet());
-
-                final String body = getBodyAsString(responseData);
-                assertNotNull(body);
-                assertTrue(body.contains("content page"));
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        final String body = getBodyAsString(responseData);
+        assertNotNull(body);
+        assertTrue(body.contains("content page"));
     }
 
     /**
@@ -89,38 +101,15 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_htmlResponse_renderedContent() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("text/html", responseData.getMimeType());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7501, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7501/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("text/html", responseData.getMimeType());
-
-                // Response body should contain HTML
-                final String body = getBodyAsString(responseData);
-                assertTrue(body.contains("<html") || body.contains("<HTML"));
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        // Response body should contain HTML
+        final String body = getBodyAsString(responseData);
+        assertTrue(body.contains("<html") || body.contains("<HTML"));
     }
 
     // ==================== Text content tests ====================
@@ -130,37 +119,14 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_textResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.txt";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("text/plain", responseData.getMimeType());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7502, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7502/test.txt";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("text/plain", responseData.getMimeType());
-
-                final String body = getBodyAsString(responseData);
-                assertEquals("This is a test document.", body.trim());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        final String body = getBodyAsString(responseData);
+        assertEquals("This is a test document.", body.trim());
     }
 
     // ==================== JSON content tests ====================
@@ -170,37 +136,14 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_jsonResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.json";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/json", responseData.getMimeType());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7503, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7503/test.json";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/json", responseData.getMimeType());
-
-                final String body = getBodyAsString(responseData);
-                assertTrue(body.contains("message"));
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        final String body = getBodyAsString(responseData);
+        assertTrue(body.contains("message"));
     }
 
     // ==================== Binary content tests ====================
@@ -210,35 +153,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_pdfResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.pdf";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7504, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7504/test.pdf";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/pdf", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/pdf", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     /**
@@ -246,35 +166,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_pngResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.png";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7505, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7505/test.png";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("image/png", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("image/png", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     /**
@@ -282,35 +179,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_jpgResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.jpg";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7506, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7506/test.jpg";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("image/jpeg", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("image/jpeg", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     /**
@@ -318,35 +192,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_gifResponse() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.gif";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7507, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7507/test.gif";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("image/gif", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("image/gif", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     // ==================== Download content tests ====================
@@ -356,35 +207,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_zipDownload() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/download.zip";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7508, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7508/download.zip";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/zip", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/zip", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     /**
@@ -392,35 +220,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_docxDownload() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.docx";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7509, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7509/test.docx";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/vnd.openxmlformats-officedocument.wordprocessingml.document", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/vnd.openxmlformats-officedocument.wordprocessingml.document", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     /**
@@ -428,75 +233,46 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_epubDownload() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.epub";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7510, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7510/test.epub";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/epub+zip", responseData.getMimeType());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/epub+zip", responseData.getMimeType());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     // ==================== Metadata tests ====================
 
     /**
      * Test response headers are captured in metadata.
+     * Uses dedicated client to avoid parallel execution issues.
      */
     @Test
     public void test_responseMetadata() {
+        // Create dedicated client for this test to avoid parallel execution issues
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
+        final PlaywrightClient dedicatedClient = new PlaywrightClient() {
             @Override
             protected Optional<MimeTypeHelper> getMimeTypeHelper() {
                 return Optional.ofNullable(mimeTypeHelper);
             }
         };
-
         try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+            dedicatedClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            dedicatedClient.setCloseTimeout(5);
+            dedicatedClient.init();
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7511, docRootDir);
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            final ResponseData responseData = dedicatedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-            try {
-                server.start();
-                final String url = "http://[::1]:7511/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(200, responseData.getHttpStatusCode());
 
-                assertEquals(200, responseData.getHttpStatusCode());
-
-                // Verify metadata map contains headers
-                assertNotNull(responseData.getMetaDataMap());
-                assertTrue(responseData.getMetaDataMap().size() > 0);
-                assertTrue(responseData.getMetaDataMap().containsKey("content-type"));
-            } finally {
-                server.stop();
-            }
+            // Verify metadata map contains headers
+            assertNotNull(responseData.getMetaDataMap());
+            assertTrue(responseData.getMetaDataMap().size() > 0);
+            assertTrue(responseData.getMetaDataMap().containsKey("content-type"));
         } finally {
-            playwrightClient.close();
+            dedicatedClient.close();
         }
     }
 
@@ -505,38 +281,15 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_lastModifiedHeader() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7512, docRootDir);
-
-            try {
-                server.start();
-                final String url = "http://[::1]:7512/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-
-                // Last-modified may or may not be present depending on server
-                // If present, it should be a valid date
-                if (responseData.getLastModified() != null) {
-                    assertTrue(responseData.getLastModified().getTime() > 0);
-                }
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
+        // Last-modified may or may not be present depending on server
+        // If present, it should be a valid date
+        if (responseData.getLastModified() != null) {
+            assertTrue(responseData.getLastModified().getTime() > 0);
         }
     }
 
@@ -547,36 +300,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_contentLength() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        // Test text file - known content
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.txt";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7513, docRootDir);
-
-            try {
-                server.start();
-
-                // Test text file - known content
-                final String url = "http://[::1]:7513/test.txt";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals(25L, responseData.getContentLength());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals(25L, responseData.getContentLength());
     }
 
     /**
@@ -584,35 +313,11 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_contentLength_html() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7514, docRootDir);
-
-            try {
-                server.start();
-
-                final String url = "http://[::1]:7514/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertTrue(responseData.getContentLength() > 0);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertTrue(responseData.getContentLength() > 0);
     }
 
     // ==================== Response body tests ====================
@@ -622,40 +327,16 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_responseBody_asInputStream() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.txt";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(200, responseData.getHttpStatusCode());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7515, docRootDir);
+        final InputStream body = responseData.getResponseBody();
+        assertNotNull(body);
 
-            try {
-                server.start();
-
-                final String url = "http://[::1]:7515/test.txt";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-
-                final InputStream body = responseData.getResponseBody();
-                assertNotNull(body);
-
-                final byte[] bytes = InputStreamUtil.getBytes(body);
-                assertEquals(25, bytes.length);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        final byte[] bytes = InputStreamUtil.getBytes(body);
+        assertEquals(25, bytes.length);
     }
 
     // ==================== HEAD request tests ====================
@@ -665,36 +346,12 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_headRequest_noBody() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().head().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7516, docRootDir);
-
-            try {
-                server.start();
-
-                final String url = "http://[::1]:7516/";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().head().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("HEAD", responseData.getMethod());
-                assertNull(responseData.getResponseBody());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("HEAD", responseData.getMethod());
+        assertNull(responseData.getResponseBody());
     }
 
     /**
@@ -702,54 +359,30 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_headRequest_variousFileTypes() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        // HTML
+        ResponseData responseData =
+                sharedClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:" + SERVER_PORT + "/").build());
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("text/html", responseData.getMimeType());
+        assertNull(responseData.getResponseBody());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        // Text
+        responseData =
+                sharedClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:" + SERVER_PORT + "/test.txt").build());
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("text/plain", responseData.getMimeType());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7517, docRootDir);
+        // PDF
+        responseData =
+                sharedClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:" + SERVER_PORT + "/test.pdf").build());
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("application/pdf", responseData.getMimeType());
 
-            try {
-                server.start();
-
-                // HTML
-                ResponseData responseData =
-                        playwrightClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:7517/").build());
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("text/html", responseData.getMimeType());
-                assertNull(responseData.getResponseBody());
-
-                // Text
-                responseData =
-                        playwrightClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:7517/test.txt").build());
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("text/plain", responseData.getMimeType());
-
-                // PDF
-                responseData =
-                        playwrightClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:7517/test.pdf").build());
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("application/pdf", responseData.getMimeType());
-
-                // PNG
-                responseData =
-                        playwrightClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:7517/test.png").build());
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals("image/png", responseData.getMimeType());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        // PNG
+        responseData =
+                sharedClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:" + SERVER_PORT + "/test.png").build());
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals("image/png", responseData.getMimeType());
     }
 
     // ==================== Error response tests ====================
@@ -759,39 +392,15 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_404Response_emptyBody() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/nonexistent.html";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
+        assertEquals(404, responseData.getHttpStatusCode());
+        assertEquals(0L, responseData.getContentLength());
+        assertNotNull(responseData.getResponseBody());
 
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7518, docRootDir);
-
-            try {
-                server.start();
-
-                final String url = "http://[::1]:7518/nonexistent.html";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(404, responseData.getHttpStatusCode());
-                assertEquals(0L, responseData.getContentLength());
-                assertNotNull(responseData.getResponseBody());
-
-                final String body = getBodyAsString(responseData);
-                assertEquals("", body);
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        final String body = getBodyAsString(responseData);
+        assertEquals("", body);
     }
 
     // ==================== URL handling tests ====================
@@ -801,35 +410,11 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_responseUrl() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        final String url = "http://[::1]:" + SERVER_PORT + "/test.txt";
+        final ResponseData responseData = sharedClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7519, docRootDir);
-
-            try {
-                server.start();
-
-                final String url = "http://[::1]:7519/test.txt";
-                final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-
-                assertEquals(200, responseData.getHttpStatusCode());
-                assertEquals(url, responseData.getUrl());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        assertEquals(200, responseData.getHttpStatusCode());
+        assertEquals(url, responseData.getUrl());
     }
 
     /**
@@ -837,38 +422,14 @@ public class PlaywrightClientDataTest extends PlainTestCase {
      */
     @Test
     public void test_responseMethod() {
-        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
-        final PlaywrightClient playwrightClient = new PlaywrightClient() {
-            @Override
-            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
-                return Optional.ofNullable(mimeTypeHelper);
-            }
-        };
+        // GET
+        ResponseData responseData =
+                sharedClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + SERVER_PORT + "/").build());
+        assertEquals("GET", responseData.getMethod());
 
-        try {
-            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.init();
-
-            final File docRootDir = new File(ResourceUtil.getBuildDir("docroot/index.html"), "docroot");
-            final CrawlerWebServer server = new CrawlerWebServer(7520, docRootDir);
-
-            try {
-                server.start();
-
-                // GET
-                ResponseData responseData =
-                        playwrightClient.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:7520/").build());
-                assertEquals("GET", responseData.getMethod());
-
-                // HEAD
-                responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:7520/").build());
-                assertEquals("HEAD", responseData.getMethod());
-            } finally {
-                server.stop();
-            }
-        } finally {
-            playwrightClient.close();
-        }
+        // HEAD
+        responseData = sharedClient.execute(RequestDataBuilder.newRequestData().head().url("http://[::1]:" + SERVER_PORT + "/").build());
+        assertEquals("HEAD", responseData.getMethod());
     }
 
     private String getBodyAsString(final ResponseData responseData) {
