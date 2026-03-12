@@ -24,11 +24,18 @@ fess-crawler-playwright/
 │   │   ├── PlaywrightClientSslIgnoreTest.java # SSL certificate handling
 │   │   ├── PlaywrightClientConfigTest.java    # Browser types, load states
 │   │   ├── PlaywrightClientEdgeCaseTest.java  # URL parsing, timeouts, errors
+│   │   ├── PlaywrightClientConcurrencyTest.java # Concurrent access tests
+│   │   ├── PlaywrightClientDataTest.java      # Data handling tests
+│   │   ├── PlaywrightClientExceptionTest.java # Exception handling tests
+│   │   ├── PlaywrightClientHc5MigrationTest.java # HC5 migration tests
+│   │   ├── PlaywrightClientInternalMethodTest.java # Internal method tests
+│   │   ├── PlaywrightClientPropertyTest.java  # Property configuration tests
 │   │   └── PlaywrightClientCreatorTest.java   # Factory registration tests
 │   └── util/
 │       ├── CrawlerWebServer.java              # Jetty HTTP/HTTPS test server
 │       ├── CrawlerAuthenticationServer.java   # Mock auth server
-│       └── CrawlerWebProxy.java               # Mock proxy server
+│       ├── CrawlerWebProxy.java               # Mock proxy server
+│       └── CrawlerWebProxyTest.java           # Proxy utility tests
 │
 └── src/test/resources/
     ├── docroot/                               # Test web content (HTML, PDF, images, etc.)
@@ -54,6 +61,7 @@ mvn clean package
 
 ```bash
 mvn formatter:format                           # Format code (REQUIRED before commit)
+mvn license:format                             # Update license headers (REQUIRED before commit)
 mvn test                                       # Run all tests
 mvn -Dtest=PlaywrightClientTest test           # Run specific test class
 mvn -Dtest=PlaywrightClientTest#test_doGet test  # Run specific test method
@@ -96,16 +104,19 @@ Factory for registering PlaywrightClient with URL patterns.
 - **CrawlerWebProxy**: Mock proxy with authentication tracking
 
 ### Test Resources
-Test content in `src/test/resources/docroot/`: HTML, PDF, DOCX, EPUB, images (GIF/JPG/PNG), ZIP, TXT, JSON
+Test content in `src/test/resources/docroot/`: HTML (index, menu, form, home, content, info), PDF, DOCX, EPUB, RTF, images (GIF/JPG/PNG), ZIP, TXT, JSON, shell scripts, JS directory
 
 ## Code Standards
 
-- **ALWAYS** run `mvn formatter:format` before committing
+- **ALWAYS** run `mvn formatter:format && mvn license:format` before committing
 - All source files require Apache 2.0 license headers
 - Add tests for new features using existing test utilities
 - Java Module Name: `org.codelibs.fess.crawler.playwright`
 
 ## Architecture Notes
+
+### Parallel Test Execution
+Tests run with JUnit 5 parallel execution: 4 threads, concurrent at class level, same-thread within each class. Configured in `pom.xml` via `maven-surefire-plugin`.
 
 ### Thread Safety
 - Page access synchronized with `synchronized(page) { ... }`
