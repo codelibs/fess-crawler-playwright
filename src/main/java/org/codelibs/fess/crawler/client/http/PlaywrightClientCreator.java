@@ -88,8 +88,8 @@ public class PlaywrightClientCreator {
                 }
                 creator.register(regex, componentName);
             });
-            if (logger.isInfoEnabled()) {
-                logger.info("Successfully registered {} regex pattern(s) with component: {}", regexList.size(), componentName);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Successfully registered {} regex pattern(s) with component: {}", regexList.size(), componentName);
             }
         } else {
             throw new IllegalStateException(
