@@ -15,27 +15,23 @@
  */
 package org.codelibs.fess.crawler.util;
 
-import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
-import org.mortbay.jetty.Server;
-import org.mortbay.jetty.bio.SocketConnector;
-import org.mortbay.jetty.servlet.ServletHandler;
-import org.mortbay.jetty.servlet.ServletHolder;
-import org.mortbay.servlet.ProxyServlet;
+import org.eclipse.jetty.client.ContentResponse;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.util.Callback;
 
 /**
  * A sample single-threaded proxy server (based on Jetty) for testing purposes.
@@ -53,7 +49,8 @@ public class CrawlerWebProxy {
 
     // Records the last access result
     private final AtomicReference<ProxyAccessStatus> accessResult = new AtomicReference<>(ProxyAccessStatus.NOT_ACCESSED);
-    private final Server proxyServer = new Server();
+    private Server proxyServer;
+    private HttpClient httpClient;
 
     // Ports below 1024 requires sudo permissions on linux.
     private int port = 3128;
@@ -81,12 +78,11 @@ public class CrawlerWebProxy {
 
     public void start() {
         try {
-            // add port to server
-            final SocketConnector connector = new SocketConnector();
-            connector.setPort(this.port);
-            this.proxyServer.setConnectors(ArrayUtils.toArray(connector));
+            httpClient = new HttpClient();
+            httpClient.start();
 
-            attachProxyServlet();
+            proxyServer = new Server(this.port);
+            proxyServer.setHandler(new CrawlerProxyHandler());
             proxyServer.start();
         } catch (final Exception e) {
             throw new CrawlerSystemException(e);
@@ -96,17 +92,10 @@ public class CrawlerWebProxy {
     public void stop() {
         try {
             proxyServer.stop();
+            httpClient.stop();
         } catch (final Exception e) {
             throw new CrawlerSystemException(e);
         }
-    }
-
-    private void attachProxyServlet() {
-        final ServletHandler handler = new ServletHandler();
-        final CrawlerProxyServlet proxyServlet = new CrawlerProxyServlet();
-        final ServletHolder holder = new ServletHolder(proxyServlet);
-        handler.addServletWithMapping(holder, "/*");
-        this.proxyServer.setHandler(handler);
     }
 
     private static String encodeCredentials(final String username, final String password) {
@@ -119,56 +108,65 @@ public class CrawlerWebProxy {
         return "Basic %s".formatted(encodedString);
     }
 
-    private class CrawlerProxyServlet extends ProxyServlet {
+    private class CrawlerProxyHandler extends Handler.Abstract {
         @Override
-        public void service(final ServletRequest req, final ServletResponse res) throws ServletException, IOException {
+        public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
             logger.info("Proxy request received!");
             final String correctAuthHeader = CrawlerWebProxy.this.authHeader.get();
 
             // Allow access if there is no authHeader
             if (StringUtils.isBlank(correctAuthHeader)) {
                 logger.info("No authentication required");
-                grantAccess(req, res);
-                return;
+                grantAccess(request, response, callback);
+                return true;
             }
 
-            if (req instanceof final HttpServletRequest httpRequest && res instanceof final HttpServletResponse httpResponse) {
-                final var requestAuthHeader = httpRequest.getHeader(PROXY_AUTHORIZATION);
+            final var requestAuthHeader = request.getHeaders().get(PROXY_AUTHORIZATION);
 
-                if (requestAuthHeader == null) {
-                    requireAuth(httpResponse);
-                } else if (StringUtils.equals(correctAuthHeader, requestAuthHeader)) {
-                    logger.info("Authentication matches!");
-                    grantAccess(req, res);
-                } else {
-                    denyAccess(httpResponse);
-                }
+            if (requestAuthHeader == null) {
+                requireAuth(response, callback);
+            } else if (StringUtils.equals(correctAuthHeader, requestAuthHeader)) {
+                logger.info("Authentication matches!");
+                grantAccess(request, response, callback);
             } else {
-                res.setContentType("text/html;charset=UTF-8");
-                res.setContentLength(0);
-                res.flushBuffer();
+                denyAccess(response, callback);
             }
+            return true;
         }
 
-        private void grantAccess(final ServletRequest req, final ServletResponse res) throws ServletException, IOException {
+        private void grantAccess(final Request request, final Response response, final Callback callback) {
             logger.info("Access granted!");
             CrawlerWebProxy.this.accessResult.set(ProxyAccessStatus.ACCESS_GRANTED);
-            super.service(req, res);
+            try {
+                final String targetUri = request.getHttpURI().toString();
+                final ContentResponse proxyResponse = httpClient.newRequest(targetUri).method(request.getMethod()).send();
+
+                response.setStatus(proxyResponse.getStatus());
+                final String contentType = proxyResponse.getHeaders().get(HttpHeader.CONTENT_TYPE);
+                if (contentType != null) {
+                    response.getHeaders().put(HttpHeader.CONTENT_TYPE, contentType);
+                }
+                response.write(true, ByteBuffer.wrap(proxyResponse.getContent()), callback);
+            } catch (final Exception e) {
+                logger.warn("Failed to proxy request", e);
+                response.setStatus(502);
+                callback.succeeded();
+            }
         }
 
-        private void denyAccess(final HttpServletResponse httpResponse) throws IOException {
+        private void denyAccess(final Response response, final Callback callback) {
             logger.info("Access denied!");
             CrawlerWebProxy.this.accessResult.set(ProxyAccessStatus.ACCESS_DENIED);
-            httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            httpResponse.flushBuffer();
+            response.setStatus(401);
+            callback.succeeded();
         }
 
-        private void requireAuth(final HttpServletResponse httpResponse) throws IOException {
+        private void requireAuth(final Response response, final Callback callback) {
             logger.info("Username and password is required but wasn't provided, prompting client for credentials...");
             CrawlerWebProxy.this.accessResult.set(ProxyAccessStatus.PROMPTED_FOR_CREDENTIALS);
-            httpResponse.setStatus(HttpServletResponse.SC_PROXY_AUTHENTICATION_REQUIRED);
-            httpResponse.setHeader(PROXY_AUTHENTICATE, "Basic realm=\"Enter username and password\"");
-            httpResponse.flushBuffer();
+            response.setStatus(407);
+            response.getHeaders().put(PROXY_AUTHENTICATE, "Basic realm=\"Enter username and password\"");
+            callback.succeeded();
         }
     }
 }
