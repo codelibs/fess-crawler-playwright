@@ -16,21 +16,25 @@
 package org.codelibs.fess.crawler.util;
 
 import java.io.File;
+import java.nio.file.Path;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.core.io.FileUtil;
 import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
-import org.mortbay.jetty.Handler;
-import org.mortbay.jetty.Server;
-import org.mortbay.jetty.handler.DefaultHandler;
-import org.mortbay.jetty.handler.HandlerList;
-import org.mortbay.jetty.handler.ResourceHandler;
-import org.mortbay.jetty.nio.SelectChannelConnector;
-import org.mortbay.jetty.security.SslSocketConnector;
-import org.mortbay.log.Log;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.SecureRequestCustomizer;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.server.handler.DefaultHandler;
+import org.eclipse.jetty.server.handler.ResourceHandler;
+import org.eclipse.jetty.util.resource.ResourceFactory;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 /**
  * @author shinsuke
@@ -60,20 +64,13 @@ public class CrawlerWebServer {
             logger.debug("Initializing CrawlerWebServer on port {} with document root: {}", port, docRoot.getAbsolutePath());
         }
 
-        server = new Server();
+        server = new Server(port);
 
-        // Bind to all interfaces (dual-stack: IPv4 and IPv6)
-        final SelectChannelConnector connector = new SelectChannelConnector();
-        connector.setPort(port);
-        server.addConnector(connector);
-
-        final ResourceHandler resource_handler = new ResourceHandler();
-        resource_handler.setWelcomeFiles(new String[] { "index.html" });
-        resource_handler.setResourceBase(docRoot.getAbsolutePath());
-        Log.info("serving " + resource_handler.getBaseResource());
-        final HandlerList handlers = new HandlerList();
-        handlers.setHandlers(new Handler[] { resource_handler, new DefaultHandler() });
-        server.setHandler(handlers);
+        final ResourceHandler resourceHandler = new ResourceHandler();
+        resourceHandler.setWelcomeFiles("index.html");
+        resourceHandler.setBaseResource(ResourceFactory.of(resourceHandler).newResource(Path.of(docRoot.getAbsolutePath())));
+        logger.info("serving {}", docRoot.getAbsolutePath());
+        server.setHandler(new Handler.Sequence(resourceHandler, new DefaultHandler()));
 
         if (logger.isDebugEnabled()) {
             logger.debug("CrawlerWebServer initialized successfully");
@@ -98,16 +95,23 @@ public class CrawlerWebServer {
                 logger.debug("Using keystore file: {}", certFilePath);
             }
 
-            // Ssl handler - dual-stack support (IPv4 and IPv6)
-            final SslSocketConnector sslSocketConnector = new SslSocketConnector();
-            sslSocketConnector.setKeystore(certFilePath);
-            sslSocketConnector.setTruststore(certFilePath);
-            sslSocketConnector.setPassword("password");
-            sslSocketConnector.setKeyPassword("password");
-            sslSocketConnector.setTrustPassword("password");
-            sslSocketConnector.setPort(port);
+            final SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
+            sslContextFactory.setKeyStorePath(certFilePath);
+            sslContextFactory.setKeyStorePassword("password");
+            sslContextFactory.setKeyManagerPassword("password");
+            sslContextFactory.setTrustStorePath(certFilePath);
+            sslContextFactory.setTrustStorePassword("password");
 
-            server.setConnectors(ArrayUtils.toArray(sslSocketConnector));
+            final HttpConfiguration httpsConfig = new HttpConfiguration();
+            final SecureRequestCustomizer secureRequestCustomizer = new SecureRequestCustomizer();
+            secureRequestCustomizer.setSniHostCheck(false);
+            httpsConfig.addCustomizer(secureRequestCustomizer);
+
+            final ServerConnector sslConnector = new ServerConnector(server, new SslConnectionFactory(sslContextFactory, "http/1.1"),
+                    new HttpConnectionFactory(httpsConfig));
+            sslConnector.setPort(port);
+
+            server.setConnectors(new Connector[] { sslConnector });
 
             if (logger.isDebugEnabled()) {
                 logger.debug("TLS configuration completed");
