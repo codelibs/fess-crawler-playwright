@@ -68,6 +68,7 @@ import com.microsoft.playwright.BrowserType.LaunchOptions;
 import com.microsoft.playwright.Download;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
@@ -203,6 +204,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     private volatile boolean usingSharedWorker = false;
 
     /**
+     * Flag indicating whether this instance has been closed.
+     * Checked as the first statement inside execute()'s {@code synchronized (page)} block so that
+     * a thread already in-flight inside execute() (or one that is about to enter its monitor) can
+     * never observe a page/context/browser that close() has torn down out from under it.
+     */
+    private volatile boolean closed = false;
+
+    /**
      * The crawler container instance.
      */
     @Resource
@@ -265,6 +274,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 worker = createPlaywrightWorker();
                 usingSharedWorker = false;
             }
+
+            // This instance now holds a live (not-yet-closed) worker/page: a prior close() (if any)
+            // no longer applies. Note this does not weaken the close()-vs-execute() race guard: by
+            // the time init() can observe worker == null and reach here, any earlier close() call on
+            // the previous worker has already fully returned (see close()'s synchronized(pageRef)).
+            closed = false;
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Playwright initialization completed successfully");
@@ -339,34 +354,44 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         final boolean isSharedWorker = usingSharedWorker;
+        // Capture the same Page instance that execute() synchronizes on, before any teardown,
+        // so close() contends on that exact monitor instead of racing an in-flight execute().
+        final Page pageRef = worker.getValue4();
 
         if (logger.isDebugEnabled()) {
             logger.debug("Initiating Playwright worker cleanup (shared: {})", isSharedWorker);
         }
 
         try {
-            if (isSharedWorker) {
-                synchronized (INITIALIZATION_LOCK) {
-                    final int refCount = SHARED_WORKER_REF_COUNT.decrementAndGet();
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Shared worker reference count decremented to: {}", refCount);
-                    }
+            synchronized (pageRef) {
+                // Mark this instance closed before/alongside teardown so that any thread that is
+                // currently inside, or next enters, execute()'s synchronized(page) block on this
+                // same monitor observes it immediately.
+                closed = true;
 
-                    if (refCount <= 0) {
-                        if (logger.isInfoEnabled()) {
-                            logger.info("No more references to shared worker, closing resources");
-                        }
-                        close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
-                        SHARED_WORKER = null;
-                        SHARED_WORKER_REF_COUNT.set(0);
-                    } else {
+                if (isSharedWorker) {
+                    synchronized (INITIALIZATION_LOCK) {
+                        final int refCount = SHARED_WORKER_REF_COUNT.decrementAndGet();
                         if (logger.isDebugEnabled()) {
-                            logger.debug("Shared worker still in use by {} other client(s), not closing", refCount);
+                            logger.debug("Shared worker reference count decremented to: {}", refCount);
+                        }
+
+                        if (refCount <= 0) {
+                            if (logger.isInfoEnabled()) {
+                                logger.info("No more references to shared worker, closing resources");
+                            }
+                            close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
+                            SHARED_WORKER = null;
+                            SHARED_WORKER_REF_COUNT.set(0);
+                        } else {
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("Shared worker still in use by {} other client(s), not closing", refCount);
+                            }
                         }
                     }
+                } else {
+                    close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
                 }
-            } else {
-                close(worker.getValue1(), worker.getValue2(), worker.getValue3(), worker.getValue4());
             }
         } finally {
             worker = null;
@@ -380,6 +405,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * Closes the Playwright worker in the background.
+     *
+     * <p>Note: if {@code closer} (e.g. {@code page.close()}) itself hangs past {@link #closeTimeout},
+     * this method gives up waiting and returns, but the abandoned daemon thread may still be running
+     * afterward. This is a pre-existing, separate limitation and is not addressed here.</p>
      *
      * @param closer The runnable to close the worker.
      */
@@ -493,6 +522,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     @Override
     public ResponseData execute(final RequestData request) {
         if (worker == null) {
+            if (closed) {
+                // This instance was already closed and never re-init()'d since: reject immediately
+                // instead of silently resurrecting it via auto-init. (Calling init() explicitly again
+                // after close() is still supported and clears this flag - see init().)
+                throw new CrawlerSystemException("PlaywrightClient has already been closed. URL: " + request.getUrl());
+            }
             if (logger.isDebugEnabled()) {
                 logger.debug("Worker not initialized, triggering init()");
             }
@@ -513,6 +548,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final Consumer<Download> downloadHandler = download -> downloadRef.compareAndSet(null, download);
 
         synchronized (page) {
+            if (closed) {
+                throw new CrawlerSystemException("PlaywrightClient has already been closed. URL: " + url);
+            }
+
             if (logger.isDebugEnabled()) {
                 logger.debug("Acquired page lock for URL: {}", url);
             }
@@ -525,18 +564,44 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Download handler registered for potential file downloads");
                 }
 
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Accessing {}", url);
+                final Response response;
+                try {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Accessing {}", url);
+                    }
+                    response = page.navigate(url);
+                } catch (final Exception e) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
+                    }
+                    return waitForDownloadOrFail(page, request, responseRef, downloadRef, e);
                 }
-                final Response response = page.navigate(url);
 
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Waiting for LoadState: {}", renderedState);
-                }
-                page.waitForLoadState(renderedState);
+                try {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Waiting for LoadState: {}", renderedState);
+                    }
+                    page.waitForLoadState(renderedState);
 
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Page reached LoadState: {}", renderedState);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Page reached LoadState: {}", renderedState);
+                    }
+                } catch (final PlaywrightException e) {
+                    if (downloadRef.get() != null) {
+                        // A download may have started as a side effect even though the load-state wait
+                        // itself timed out (e.g. a JS-triggered download on a page that is also chatty).
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("waitForLoadState failed but a download was already detected, "
+                                    + "attempting to handle as file download: {}", e.getMessage());
+                        }
+                        return waitForDownloadOrFail(page, request, responseRef, downloadRef, e);
+                    }
+                    // No download fired: the page still navigated and rendered successfully, it just
+                    // never reached the configured LoadState (e.g. NETWORKIDLE never fires for pages
+                    // with persistent connections). Don't discard the successfully-loaded content.
+                    logger.warn(
+                            "Timed out waiting for LoadState '{}' on URL: {}. Falling back to the content " + "that was already loaded.",
+                            renderedState, url, e);
                 }
 
                 if (contentWaitDuration > 0L) {
@@ -550,50 +615,6 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
                 }
                 return createResponseData(page, request, response, null);
-            } catch (final Exception e) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
-                }
-
-                // Wait for download with progressive backoff for responsiveness
-                // Start with short intervals, increase over time to balance responsiveness and CPU efficiency
-                // Note: page.waitForTimeout() is required to drive Playwright's event loop
-                final long timeoutMs = downloadTimeout * 1000L;
-                final long startTime = System.currentTimeMillis();
-                long pollInterval = 100L; // Start with 100ms
-                while (System.currentTimeMillis() - startTime < timeoutMs) {
-                    if (responseRef.get() != null && downloadRef.get() != null) {
-                        break;
-                    }
-                    try {
-                        page.waitForTimeout(pollInterval);
-                        // Progressive backoff: 100ms -> 200ms -> 400ms -> 500ms (max)
-                        if (pollInterval < 500L) {
-                            pollInterval = Math.min(pollInterval * 2, 500L);
-                        }
-                    } catch (final Exception ignored) {
-                        // ignore timeout exceptions during polling
-                    }
-                }
-                if (logger.isDebugEnabled()) {
-                    final long elapsed = System.currentTimeMillis() - startTime;
-                    logger.debug("Download wait completed after {}ms, timeout: {}s", elapsed, downloadTimeout);
-                }
-
-                final Response response = responseRef.get();
-                final Download download = downloadRef.get();
-                if (response != null && download != null) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Downloaded:  URL: {}", response.url());
-                    }
-                    return createResponseData(page, request, response, download);
-                }
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
-                }
-                final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null)
-                        + ", Download started: " + (download != null) + ", Timeout: " + downloadTimeout + "s";
-                throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, e);
             } finally {
                 // Clean up event handlers to prevent memory leaks
                 page.offResponse(responseHandler);
@@ -605,6 +626,67 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 resetPage(page);
             }
         }
+    }
+
+    /**
+     * Waits for a download to be detected (via the {@code responseRef}/{@code downloadRef} handlers
+     * registered in {@link #execute(RequestData)}), or fails with a {@link CrawlingAccessException}
+     * if none is detected within {@link #downloadTimeout}.
+     *
+     * <p>This is used when the browser reports an in-page navigation failure that may actually be a
+     * file download (Chromium/Firefox/WebKit abort in-page navigation when the target triggers a
+     * download), or when a download was detected as a side effect of an otherwise-failed load-state
+     * wait.</p>
+     *
+     * @param page The page.
+     * @param request The request data.
+     * @param responseRef A reference populated by the page's {@code onResponse} handler, if any.
+     * @param downloadRef A reference populated by the page's {@code onDownload} handler, if any.
+     * @param cause The exception that triggered this fallback, used as the cause of the thrown
+     *            {@link CrawlingAccessException} if no download is detected.
+     * @return The response data for the detected download.
+     */
+    protected ResponseData waitForDownloadOrFail(final Page page, final RequestData request, final AtomicReference<Response> responseRef,
+            final AtomicReference<Download> downloadRef, final Exception cause) {
+        // Wait for download with progressive backoff for responsiveness
+        // Start with short intervals, increase over time to balance responsiveness and CPU efficiency
+        // Note: page.waitForTimeout() is required to drive Playwright's event loop
+        final long timeoutMs = downloadTimeout * 1000L;
+        final long startTime = System.currentTimeMillis();
+        long pollInterval = 100L; // Start with 100ms
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (responseRef.get() != null && downloadRef.get() != null) {
+                break;
+            }
+            try {
+                page.waitForTimeout(pollInterval);
+                // Progressive backoff: 100ms -> 200ms -> 400ms -> 500ms (max)
+                if (pollInterval < 500L) {
+                    pollInterval = Math.min(pollInterval * 2, 500L);
+                }
+            } catch (final Exception ignored) {
+                // ignore timeout exceptions during polling
+            }
+        }
+        if (logger.isDebugEnabled()) {
+            final long elapsed = System.currentTimeMillis() - startTime;
+            logger.debug("Download wait completed after {}ms, timeout: {}s", elapsed, downloadTimeout);
+        }
+
+        final Response response = responseRef.get();
+        final Download download = downloadRef.get();
+        if (response != null && download != null) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Downloaded:  URL: {}", response.url());
+            }
+            return createResponseData(page, request, response, download);
+        }
+        if (logger.isDebugEnabled()) {
+            logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
+        }
+        final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null) + ", Download started: "
+                + (download != null) + ", Timeout: " + downloadTimeout + "s";
+        throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, cause);
     }
 
     /**

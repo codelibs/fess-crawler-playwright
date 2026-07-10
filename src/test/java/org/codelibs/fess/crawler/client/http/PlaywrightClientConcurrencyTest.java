@@ -18,6 +18,7 @@ package org.codelibs.fess.crawler.client.http;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -31,14 +32,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
 import org.dbflute.utflute.core.PlainTestCase;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.util.Callback;
 
 import com.microsoft.playwright.BrowserType;
 
@@ -602,6 +613,111 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
             assertEquals(numRequests, successCount);
         } finally {
             playwrightClient.close();
+        }
+    }
+
+    // ==================== close()-vs-execute() race tests ====================
+
+    /**
+     * Test that close() called concurrently with an in-flight execute() does not race:
+     * close() must wait for the in-flight request to release the page's monitor before tearing
+     * down Playwright resources, rather than closing the page/context/browser out from under it.
+     */
+    @Test
+    @Timeout(30)
+    public void test_close_duringInFlightExecute_waitsThenClosesSafely() throws Exception {
+        final int slowServerPort = 7151;
+        final Server slowServer = new Server();
+        final ServerConnector connector = new ServerConnector(slowServer);
+        connector.setPort(slowServerPort);
+        slowServer.addConnector(connector);
+        slowServer.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                // Sleep before responding so the corresponding execute() call is genuinely
+                // in-flight (blocked inside page.navigate()) when close() is invoked below.
+                Thread.sleep(1500L);
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "<html><body>slow page</body></html>", callback);
+                return true;
+            }
+        });
+        slowServer.start();
+
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient playwrightClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
+        final ExecutorService executor = Executors.newFixedThreadPool(1);
+
+        try {
+            playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            playwrightClient.setCloseTimeout(5);
+            playwrightClient.init();
+
+            final String slowUrl = "http://[::1]:" + slowServerPort + "/";
+            final CountDownLatch execStarted = new CountDownLatch(1);
+            final AtomicReference<ResponseData> execResult = new AtomicReference<>();
+            final AtomicInteger closedDuringExec = new AtomicInteger(0);
+            final AtomicReference<Exception> unexpectedError = new AtomicReference<>();
+
+            final Future<?> execFuture = executor.submit(() -> {
+                execStarted.countDown();
+                try {
+                    execResult.set(playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(slowUrl).build()));
+                } catch (final CrawlerSystemException e) {
+                    if (e.getMessage() != null && e.getMessage().contains("already been closed")) {
+                        // Also an acceptable, clean outcome: close() won the race for the monitor
+                        // and this execute() correctly observed closed==true before touching the page.
+                        closedDuringExec.incrementAndGet();
+                    } else {
+                        unexpectedError.set(e);
+                    }
+                } catch (final Exception e) {
+                    unexpectedError.set(e);
+                }
+            });
+
+            // Give the background thread time to actually enter execute()'s synchronized(page)
+            // block and start navigating the slow page before we call close() from this thread.
+            assertTrue(execStarted.await(10, TimeUnit.SECONDS));
+            Thread.sleep(300L);
+
+            // With the fix, close() must block until the in-flight execute() releases the page's
+            // monitor (rather than tearing down the page/context/browser concurrently), and then
+            // complete cleanly - all within this test's @Timeout bound.
+            playwrightClient.close();
+
+            execFuture.get(15, TimeUnit.SECONDS);
+
+            // (a) No crash / unexpected exception from the in-flight execute() call: either it
+            // completed successfully, or it cleanly observed the already-closed state.
+            assertNull(unexpectedError.get());
+            assertTrue(execResult.get() != null || closedDuringExec.get() > 0);
+            if (execResult.get() != null) {
+                assertEquals(200, execResult.get().getHttpStatusCode());
+            }
+
+            // (b) After close() returns, a subsequent execute() call on this instance must throw
+            // promptly with a clear message, proving the closed check works.
+            try {
+                playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(slowUrl).build());
+                fail();
+            } catch (final CrawlerSystemException e) {
+                assertTrue(e.getMessage().contains("already been closed"));
+            }
+        } finally {
+            executor.shutdownNow();
+            try {
+                playwrightClient.close();
+            } catch (final Exception e) {
+                // ignore - best-effort cleanup
+            }
+            slowServer.stop();
         }
     }
 }

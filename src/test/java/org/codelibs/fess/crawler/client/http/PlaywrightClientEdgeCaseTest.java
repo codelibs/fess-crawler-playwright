@@ -18,6 +18,7 @@ package org.codelibs.fess.crawler.client.http;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.core.io.ResourceUtil;
+import org.codelibs.core.misc.Tuple4;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
@@ -34,8 +36,20 @@ import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
 import org.dbflute.utflute.core.PlainTestCase;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.util.Callback;
 
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
 
 /**
  * Test class for PlaywrightClient edge cases and error handling.
@@ -356,6 +370,83 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
         // Verify lastModified is set if available
         if (responseData.getLastModified() != null) {
             assertTrue(responseData.getLastModified().getTime() > 0);
+        }
+    }
+
+    // ==================== LoadState timeout handling tests ====================
+
+    /**
+     * Test that a page which loads successfully but never reaches the configured LoadState
+     * (e.g. NETWORKIDLE never firing because of a lingering same-origin network request) still
+     * returns the successfully-loaded content instead of being misclassified as a failed/absent
+     * download and discarded via CrawlingAccessException.
+     */
+    @Test
+    @Timeout(30)
+    public void test_execute_neverReachesLoadState_returnsLoadedContent() throws Exception {
+        final int neverIdlePort = 7091;
+        final Server neverIdleServer = new Server();
+        final ServerConnector connector = new ServerConnector(neverIdleServer);
+        connector.setPort(neverIdlePort);
+        neverIdleServer.addConnector(connector);
+        neverIdleServer.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                final String path = request.getHttpURI().getPath();
+                if ("/hang".equals(path)) {
+                    // Bounded "hang": long enough to outlast the short page timeout configured
+                    // below, short enough that server.stop() never has to wait for long.
+                    Thread.sleep(2000L);
+                    response.setStatus(200);
+                    response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/plain;charset=UTF-8");
+                    Content.Sink.write(response, true, "done", callback);
+                    return true;
+                }
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                // A same-origin fetch() (unlike an <img>/<script src>) is invisible to the page's
+                // "load" event, so navigate() itself returns promptly; but the pending connection
+                // keeps the network non-idle, so waitForLoadState(NETWORKIDLE) never succeeds.
+                Content.Sink.write(response, true,
+                        "<html><body>Never Idle Page<script>fetch('/hang').catch(function(e){});</script></body></html>", callback);
+                return true;
+            }
+        });
+        neverIdleServer.start();
+
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient neverIdleClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+
+            @Override
+            protected Tuple4<Playwright, Browser, BrowserContext, Page> createPlaywrightWorker() {
+                final Tuple4<Playwright, Browser, BrowserContext, Page> tuple = super.createPlaywrightWorker();
+                // Test-only: shorten the default timeout so waitForLoadState(NETWORKIDLE) times out
+                // in ~0.5s instead of Playwright's real default (~30s), without adding a production
+                // configuration knob. navigate() itself easily completes well under this on localhost.
+                tuple.getValue4().setDefaultTimeout(500);
+                return tuple;
+            }
+        };
+
+        try {
+            neverIdleClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            neverIdleClient.setCloseTimeout(5);
+            neverIdleClient.init();
+
+            final String url = "http://[::1]:" + neverIdlePort + "/";
+            final ResponseData responseData = neverIdleClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertEquals("text/html", responseData.getMimeType());
+            assertNotNull(responseData.getResponseBody());
+            assertTrue(getBodyAsString(responseData).contains("Never Idle Page"));
+        } finally {
+            neverIdleClient.close();
+            neverIdleServer.stop();
         }
     }
 
