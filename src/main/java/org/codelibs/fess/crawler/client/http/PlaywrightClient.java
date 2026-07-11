@@ -110,6 +110,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     private static final Logger logger = LogManager.getLogger(PlaywrightClient.class);
 
+    /**
+     * Guards {@link #init()} (JVM-wide, across every instance) and, nested inside a {@code Page}
+     * monitor, the shared-worker reference-count decrement in {@link #close()}.
+     *
+     * <p><b>Lock-ordering invariant: a {@code Page} monitor (see {@link #close()}/{@link #execute(RequestData)})
+     * is always acquired before this lock, never after.</b> {@link #init()} holds only this lock for
+     * its entire body and never synchronizes on a {@code Page}; keep it that way - acquiring this lock
+     * first and then a {@code Page} monitor anywhere would create the reverse ordering and a real
+     * deadlock risk with {@link #close()}.</p>
+     */
     private static final Object INITIALIZATION_LOCK = new Object();
 
     /**
@@ -227,6 +237,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     @Override
     public void init() {
+        // Holds only INITIALIZATION_LOCK for this entire method - never nest a `synchronized(page)`
+        // (or any Page monitor) inside it. See the lock-ordering invariant documented on
+        // INITIALIZATION_LOCK's declaration.
         synchronized (INITIALIZATION_LOCK) {
             if (worker != null) {
                 if (logger.isDebugEnabled()) {
@@ -375,6 +388,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 closed = true;
 
                 if (isSharedWorker) {
+                    // Page monitor (pageRef, held above) THEN INITIALIZATION_LOCK - never the reverse
+                    // order. See the lock-ordering invariant documented on INITIALIZATION_LOCK's
+                    // declaration; do not hoist this out to acquire INITIALIZATION_LOCK first.
                     synchronized (INITIALIZATION_LOCK) {
                         final int refCount = SHARED_WORKER_REF_COUNT.decrementAndGet();
                         if (logger.isDebugEnabled()) {

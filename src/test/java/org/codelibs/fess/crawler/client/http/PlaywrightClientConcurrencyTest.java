@@ -720,4 +720,115 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
             slowServer.stop();
         }
     }
+
+    // ==================== lock-ordering / deadlock regression tests ====================
+
+    /**
+     * Regression backstop for the lock-ordering invariant documented on
+     * {@code PlaywrightClient.INITIALIZATION_LOCK} (a {@code Page} monitor must always be acquired
+     * before {@code INITIALIZATION_LOCK}, never the reverse).
+     *
+     * <p>This does NOT prove deadlock-freedom by itself - that's established by the lock-ordering
+     * argument (only {@code close()} ever nests both locks, always in the same order). What this test
+     * gives is an executable guardrail: it hammers {@code init()}/{@code execute()}/{@code close()}
+     * concurrently across several client instances - some sharing one worker/{@code Page} (so their
+     * {@code close()}/{@code execute()} calls genuinely contend on the same monitor) and some
+     * independent (so their {@code init()}/{@code close()} calls only ever contend via the static
+     * {@code INITIALIZATION_LOCK}) - so that if a future change ever introduces a reverse-order lock
+     * acquisition, this test hangs instead of passing silently.</p>
+     *
+     * <p>Each client instance is driven by exactly one dedicated thread (never two threads calling
+     * {@code close()} on the very same instance), so this deliberately does not exercise the
+     * unrelated, pre-existing, low-severity close()-vs-close() TOCTOU race on a single instance - only
+     * the cross-instance/cross-lock interactions relevant to the deadlock question.</p>
+     *
+     * <p>The bounded wait below uses {@code Future#get(timeout)} on a daemon-thread executor rather
+     * than relying on {@code @Timeout} to interrupt hung worker threads: a thread blocked entering a
+     * {@code synchronized} block is not interruptible, so if a real deadlock were ever reintroduced,
+     * {@code @Timeout} alone could not unblock it. This way the test still fails cleanly (via
+     * {@code TimeoutException}) and the daemon threads cannot prevent the JVM/build from exiting.</p>
+     */
+    @Test
+    @Timeout(90)
+    public void test_concurrentInitExecuteClose_mixedSharedAndNonShared_noDeadlock() throws Exception {
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final Map<String, Object> sharedParamMap = new HashMap<>();
+        sharedParamMap.put("sharedClient", Boolean.TRUE);
+
+        final List<PlaywrightClient> clients = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            final PlaywrightClient client = new PlaywrightClient() {
+                @Override
+                protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                    return Optional.ofNullable(mimeTypeHelper);
+                }
+            };
+            client.setInitParameterMap(sharedParamMap);
+            client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            client.setCloseTimeout(5);
+            clients.add(client);
+        }
+        for (int i = 0; i < 2; i++) {
+            final PlaywrightClient client = new PlaywrightClient() {
+                @Override
+                protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                    return Optional.ofNullable(mimeTypeHelper);
+                }
+            };
+            client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            client.setCloseTimeout(5);
+            clients.add(client);
+        }
+
+        final ExecutorService executor = Executors.newFixedThreadPool(clients.size(), r -> {
+            final Thread thread = new Thread(r, "deadlock-stress");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+        try {
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            final int iterationsPerThread = 10;
+            final AtomicInteger unexpectedErrors = new AtomicInteger(0);
+            final List<Future<?>> futures = new ArrayList<>();
+
+            for (final PlaywrightClient client : clients) {
+                futures.add(executor.submit(() -> {
+                    try {
+                        for (int iter = 0; iter < iterationsPerThread; iter++) {
+                            client.init();
+                            final ResponseData responseData = client.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                            if (responseData.getHttpStatusCode() != 200) {
+                                unexpectedErrors.incrementAndGet();
+                            }
+                            if (iter % 3 == 2) {
+                                // Exercise this instance's own close()-then-reinit cycle while OTHER
+                                // threads are concurrently doing the same on their own instances -
+                                // for the shared instances this contends on the same Page monitor.
+                                client.close();
+                                client.init();
+                            }
+                        }
+                    } catch (final Exception e) {
+                        unexpectedErrors.incrementAndGet();
+                    }
+                }));
+            }
+
+            for (final Future<?> future : futures) {
+                future.get(60, TimeUnit.SECONDS);
+            }
+
+            assertEquals(0, unexpectedErrors.get());
+        } finally {
+            executor.shutdownNow();
+            for (final PlaywrightClient client : clients) {
+                try {
+                    client.close();
+                } catch (final Exception e) {
+                    // ignore - best-effort cleanup
+                }
+            }
+        }
+    }
 }
