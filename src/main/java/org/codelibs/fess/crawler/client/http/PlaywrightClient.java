@@ -163,6 +163,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected static final String LAST_MODIFIED_FORMAT = "EEE, dd MMM yyyy HH:mm:ss z";
 
     /**
+     * How long {@link #execute(RequestData)} keeps polling for a download after a LoadState wait
+     * times out with no download detected yet, in milliseconds.
+     *
+     * <p>Deliberately much shorter than {@link #downloadTimeout} (the wait used once a download is
+     * already known to be in progress): a LoadState timeout with no download detected is usually a
+     * genuinely-loaded-but-chatty page, so this short grace poll only needs to catch a download that
+     * fires within a moment of the timeout. Kept as a simple internal constant rather than a
+     * configurable knob, since the timeouts in this class are wired via setters (not init parameters)
+     * and this value is an implementation detail, not something operators need to tune.</p>
+     */
+    protected static final long LOAD_STATE_TIMEOUT_GRACE_PERIOD_MILLIS = 1500L;
+
+    /**
      * A map of options for Playwright.
      */
     protected Map<String, String> options = new HashMap<>();
@@ -204,8 +217,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The worker instance for Playwright.
+     *
+     * <p>Volatile (like {@link #usingSharedWorker} and {@link #closed}) so that
+     * {@link #execute(RequestData)} can capture it into a local with a single reliable read and a
+     * concurrent {@link #close()} nulling the field cannot cause a torn/inconsistent read.</p>
      */
-    protected Tuple4<Playwright, Browser, BrowserContext, Page> worker;
+    protected volatile Tuple4<Playwright, Browser, BrowserContext, Page> worker;
 
     /**
      * Flag indicating whether this instance is using the shared worker.
@@ -291,12 +308,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             // This instance now holds a live (not-yet-closed) worker/page: a prior close() (if any)
             // no longer applies. Once a thread has captured a page reference and entered execute()'s
             // synchronized(page) block, the volatile `closed` check there is reliable against a
-            // concurrent close() (see close()'s synchronized(pageRef)). One narrow, pre-existing gap
-            // remains: execute()'s initial `worker == null` check and its later `worker.getValue4()`
-            // read happen outside any lock, so a close() that fully completes in that exact window can
-            // still surface as a raw NullPointerException instead of this class's own "already closed"
-            // error. Low-severity (both land in the same generic error-handling path upstream) and not
-            // introduced by this flag, so left as-is rather than adding synchronization there.
+            // concurrent close() (see close()'s synchronized(pageRef)). execute() additionally captures
+            // the volatile `worker` field into a single local before dereferencing it, so a close()
+            // that nulls the field in the window after execute()'s initial `worker == null` check
+            // surfaces as this class's own "already closed" CrawlerSystemException rather than a raw
+            // NullPointerException.
             closed = false;
 
             if (logger.isDebugEnabled()) {
@@ -560,7 +576,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             logger.debug("Executing request - URL: {}, Method: {}", url, request.getMethod());
         }
 
-        final Page page = worker.getValue4();
+        // Capture the volatile worker into a single local and use only that local below. A concurrent
+        // close() may null the field at any moment; reading it once here means a race can only ever
+        // produce a clean "already closed" error (when the capture reads null) instead of a raw NPE
+        // from re-reading a field that close() nulled between the check above and the dereference.
+        final Tuple4<Playwright, Browser, BrowserContext, Page> currentWorker = worker;
+        if (currentWorker == null) {
+            throw new CrawlerSystemException("PlaywrightClient has already been closed. URL: " + url);
+        }
+
+        final Page page = currentWorker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
 
@@ -620,6 +645,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                                     + "attempting to handle as file download: {}", e.getMessage());
                         }
                         return waitForDownloadOrFail(page, request, responseRef, downloadRef, e);
+                    }
+                    // No download has been detected YET at the instant of the timeout, but one may fire
+                    // a moment later (e.g. a JS-triggered download that races the load-state timeout).
+                    // Poll briefly - far shorter than downloadTimeout - before giving up. Tradeoff: this
+                    // adds a small, bounded latency (at most LOAD_STATE_TIMEOUT_GRACE_PERIOD_MILLIS) to
+                    // every load-state-timeout fallback, in exchange for catching downloads that surface
+                    // just after the timeout is detected. Unlike waitForDownloadOrFail, a grace period
+                    // that elapses with nothing detected must NOT fail: the page is still successfully
+                    // loaded, so we fall through to returning that content.
+                    final ResponseData gracePeriodDownload =
+                            pollForDownload(page, request, responseRef, downloadRef, LOAD_STATE_TIMEOUT_GRACE_PERIOD_MILLIS);
+                    if (gracePeriodDownload != null) {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("A download surfaced within the grace period after the LoadState timeout for URL: {}", url);
+                        }
+                        return gracePeriodDownload;
                     }
                     // No download fired: the page still navigated and rendered successfully, it just
                     // never reached the configured LoadState (e.g. NETWORKIDLE never fires for pages
@@ -688,13 +729,48 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected ResponseData waitForDownloadOrFail(final Page page, final RequestData request, final AtomicReference<Response> responseRef,
             final AtomicReference<Download> downloadRef, final Exception cause) {
+        final ResponseData responseData = pollForDownload(page, request, responseRef, downloadRef, downloadTimeout * 1000L);
+        if (responseData != null) {
+            return responseData;
+        }
+
+        final Response response = responseRef.get();
+        final Download download = downloadRef.get();
+        if (logger.isDebugEnabled()) {
+            logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
+        }
+        final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null) + ", Download started: "
+                + (download != null) + ", Timeout: " + downloadTimeout + "s";
+        throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, cause);
+    }
+
+    /**
+     * Polls for a download to be detected (via the {@code responseRef}/{@code downloadRef} handlers
+     * registered in {@link #execute(RequestData)}), driving Playwright's event loop with
+     * {@link Page#waitForTimeout(double)} using a progressive backoff, for up to {@code maxWaitMillis}.
+     *
+     * <p>Shared by both {@link #waitForDownloadOrFail} (called with the full {@link #downloadTimeout}
+     * once a download is known to be in progress) and {@link #execute(RequestData)}'s short grace-poll
+     * after a LoadState timeout (called with {@link #LOAD_STATE_TIMEOUT_GRACE_PERIOD_MILLIS}). This
+     * method itself never fails on timeout - it returns {@code null} so the caller can decide whether a
+     * miss is a hard failure or a graceful fall-back.</p>
+     *
+     * @param page The page.
+     * @param request The request data.
+     * @param responseRef A reference populated by the page's {@code onResponse} handler, if any.
+     * @param downloadRef A reference populated by the page's {@code onDownload} handler, if any.
+     * @param maxWaitMillis The maximum time to poll, in milliseconds.
+     * @return The response data for the detected download, or {@code null} if a response and a download
+     *         were not both observed within {@code maxWaitMillis}.
+     */
+    protected ResponseData pollForDownload(final Page page, final RequestData request, final AtomicReference<Response> responseRef,
+            final AtomicReference<Download> downloadRef, final long maxWaitMillis) {
         // Wait for download with progressive backoff for responsiveness
         // Start with short intervals, increase over time to balance responsiveness and CPU efficiency
         // Note: page.waitForTimeout() is required to drive Playwright's event loop
-        final long timeoutMs = downloadTimeout * 1000L;
         final long startTime = System.currentTimeMillis();
         long pollInterval = 100L; // Start with 100ms
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
+        while (System.currentTimeMillis() - startTime < maxWaitMillis) {
             if (responseRef.get() != null && downloadRef.get() != null) {
                 break;
             }
@@ -710,7 +786,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
         if (logger.isDebugEnabled()) {
             final long elapsed = System.currentTimeMillis() - startTime;
-            logger.debug("Download wait completed after {}ms, timeout: {}s", elapsed, downloadTimeout);
+            logger.debug("Download wait completed after {}ms, maxWait: {}ms", elapsed, maxWaitMillis);
         }
 
         final Response response = responseRef.get();
@@ -721,12 +797,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
             return createResponseData(page, request, response, download);
         }
-        if (logger.isDebugEnabled()) {
-            logger.debug("Failed to access URL - response: {}, download: {}", response != null, download != null);
-        }
-        final String errorDetails = "URL: " + request.getUrl() + ", Response received: " + (response != null) + ", Download started: "
-                + (download != null) + ", Timeout: " + downloadTimeout + "s";
-        throw new CrawlingAccessException("Failed to access the URL. " + errorDetails, cause);
+        return null;
     }
 
     /**
