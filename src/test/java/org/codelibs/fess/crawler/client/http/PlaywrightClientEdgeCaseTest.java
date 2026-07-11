@@ -50,6 +50,8 @@ import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
+import com.microsoft.playwright.options.LoadState;
 
 /**
  * Test class for PlaywrightClient edge cases and error handling.
@@ -447,6 +449,50 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
         } finally {
             neverIdleClient.close();
             neverIdleServer.stop();
+        }
+    }
+
+    /**
+     * Test that a non-timeout {@link PlaywrightException} thrown while waiting for LoadState (e.g. the
+     * page/browser having crashed or been closed mid-wait) is NOT swallowed as "just a LoadState
+     * timeout, content is fine" the way a genuine {@link com.microsoft.playwright.TimeoutError} is. It
+     * must propagate as a real failure instead of returning fabricated "successfully loaded" content
+     * built from a page that is no longer in a trustworthy state.
+     */
+    @Test
+    @Timeout(30)
+    public void test_execute_nonTimeoutPlaywrightExceptionDuringLoadState_propagates() throws Exception {
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient crashingClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+
+            @Override
+            protected void waitForLoadState(final Page page, final LoadState state) {
+                // Simulate a non-timeout PlaywrightException (e.g. Playwright's own
+                // "Target page, context or browser has been closed") firing during the LoadState
+                // wait, after navigate() itself already succeeded.
+                throw new PlaywrightException("Target page, context or browser has been closed");
+            }
+        };
+
+        try {
+            crashingClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            crashingClient.setCloseTimeout(5);
+            crashingClient.init();
+
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            try {
+                crashingClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                // Expected the PlaywrightException to propagate instead of being treated as a LoadState timeout
+                fail();
+            } catch (final PlaywrightException e) {
+                assertTrue(e.getMessage().contains("Target page, context or browser has been closed"));
+            }
+        } finally {
+            crashingClient.close();
         }
     }
 

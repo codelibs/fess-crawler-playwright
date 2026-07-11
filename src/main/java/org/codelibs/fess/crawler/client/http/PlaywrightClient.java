@@ -68,8 +68,8 @@ import com.microsoft.playwright.BrowserType.LaunchOptions;
 import com.microsoft.playwright.Download;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
-import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.Response;
+import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.Proxy;
@@ -276,9 +276,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
 
             // This instance now holds a live (not-yet-closed) worker/page: a prior close() (if any)
-            // no longer applies. Note this does not weaken the close()-vs-execute() race guard: by
-            // the time init() can observe worker == null and reach here, any earlier close() call on
-            // the previous worker has already fully returned (see close()'s synchronized(pageRef)).
+            // no longer applies. Once a thread has captured a page reference and entered execute()'s
+            // synchronized(page) block, the volatile `closed` check there is reliable against a
+            // concurrent close() (see close()'s synchronized(pageRef)). One narrow, pre-existing gap
+            // remains: execute()'s initial `worker == null` check and its later `worker.getValue4()`
+            // read happen outside any lock, so a close() that fully completes in that exact window can
+            // still surface as a raw NullPointerException instead of this class's own "already closed"
+            // error. Low-severity (both land in the same generic error-handling path upstream) and not
+            // introduced by this flag, so left as-is rather than adding synchronization there.
             closed = false;
 
             if (logger.isDebugEnabled()) {
@@ -581,12 +586,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Waiting for LoadState: {}", renderedState);
                     }
-                    page.waitForLoadState(renderedState);
+                    waitForLoadState(page, renderedState);
 
                     if (logger.isDebugEnabled()) {
                         logger.debug("Page reached LoadState: {}", renderedState);
                     }
-                } catch (final PlaywrightException e) {
+                } catch (final TimeoutError e) {
+                    // Only a genuine LoadState timeout is handled here. Other PlaywrightExceptions (e.g.
+                    // the page/browser having crashed or been closed) are deliberately NOT caught: the
+                    // page is no longer in a state we can trust, so they should propagate as real
+                    // failures instead of being treated as "content is fine, just slow to settle".
                     if (downloadRef.get() != null) {
                         // A download may have started as a side effect even though the load-state wait
                         // itself timed out (e.g. a JS-triggered download on a page that is also chatty).
@@ -626,6 +635,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 resetPage(page);
             }
         }
+    }
+
+    /**
+     * Waits for the page to reach the given load state.
+     *
+     * <p>Extracted as its own protected method (rather than calling {@link Page#waitForLoadState(LoadState)}
+     * directly from {@link #execute(RequestData)}) purely as a test seam, so tests can simulate a
+     * non-timeout {@link com.microsoft.playwright.PlaywrightException} (e.g. a page/browser crash) without
+     * needing a real race against Playwright's internals.</p>
+     *
+     * @param page The page.
+     * @param state The load state to wait for.
+     */
+    protected void waitForLoadState(final Page page, final LoadState state) {
+        page.waitForLoadState(state);
     }
 
     /**
