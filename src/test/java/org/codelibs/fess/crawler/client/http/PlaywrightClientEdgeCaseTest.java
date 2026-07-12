@@ -498,6 +498,54 @@ public class PlaywrightClientEdgeCaseTest extends PlainTestCase {
     }
 
     /**
+     * Test that when {@link Page#navigate(String)} returns {@code null} - which Playwright's API permits
+     * for some same-document navigations (e.g. a hash-fragment-only change) - execute() surfaces a clean,
+     * catchable {@link CrawlingAccessException} naming the URL, instead of letting a raw
+     * {@link NullPointerException} propagate out of the response dereference downstream.
+     */
+    @Test
+    @Timeout(30)
+    public void test_execute_navigateReturnsNull_throwsCrawlingAccessException() {
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient nullNavigateClient = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+
+            @Override
+            protected com.microsoft.playwright.Response navigate(final Page page, final String url) {
+                // Simulate Playwright returning no main-resource response (a same-document navigation).
+                return null;
+            }
+        };
+
+        try {
+            nullNavigateClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            // Short download timeout: were the null-guard misplaced inside the navigate try/catch, the
+            // throw would be swallowed and rerouted to the download fallback, which would poll for this
+            // long before failing - so a wrong placement fails fast (and with a different message) here.
+            nullNavigateClient.setDownloadTimeout(3);
+            nullNavigateClient.setCloseTimeout(5);
+            nullNavigateClient.init();
+
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            try {
+                nullNavigateClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                fail();
+            } catch (final CrawlingAccessException e) {
+                // Assert on the distinctive fragment (not merely "Failed to access", which the
+                // download-fallback path also emits) so this proves the navigate()-returned-null guard
+                // specifically, plus that the offending URL is included.
+                assertTrue(e.getMessage().contains("Navigation returned no response"));
+                assertTrue(e.getMessage().contains(url));
+            }
+        } finally {
+            nullNavigateClient.close();
+        }
+    }
+
+    /**
      * Test the grace-poll fix: when the LoadState wait times out with NO download detected yet at
      * that instant, but a download fires shortly afterwards (within the short grace window), the
      * download must be detected and handled as a file download instead of the already-loaded HTML

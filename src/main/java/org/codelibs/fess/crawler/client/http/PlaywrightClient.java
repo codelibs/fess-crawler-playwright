@@ -664,12 +664,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Accessing {}", url);
                     }
-                    response = page.navigate(url);
+                    response = navigate(page, url);
                 } catch (final Exception e) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
                     }
                     return waitForDownloadOrFail(page, request, responseRef, downloadRef, e);
+                }
+
+                // Playwright's navigate() legitimately returns null for some same-document navigations
+                // (e.g. a hash-fragment-only change). Everything downstream (the debug log below and
+                // createResponseData) dereferences this response, so surface a clean, catchable failure
+                // here instead of letting it propagate as a raw NullPointerException. Must stay OUTSIDE
+                // the catch above: CrawlingAccessException is a RuntimeException, so throwing it inside
+                // that try would be swallowed and misrouted to the download fallback.
+                if (response == null) {
+                    throw new CrawlingAccessException("Failed to access the URL. Navigation returned no response. URL: " + url);
                 }
 
                 try {
@@ -741,6 +751,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 resetPage(page);
             }
         }
+    }
+
+    /**
+     * Navigates the page to the given URL and returns the main-resource response.
+     *
+     * <p>Extracted as its own protected method (rather than calling {@link Page#navigate(String)}
+     * directly from {@link #execute(RequestData)}) purely as a test seam, so tests can simulate a
+     * {@code null} response - which Playwright's API permits for some same-document navigations - without
+     * needing a real page that performs such a navigation.</p>
+     *
+     * @param page The page.
+     * @param url The URL to navigate to.
+     * @return The main-resource response, or {@code null} for a same-document navigation.
+     */
+    protected Response navigate(final Page page, final String url) {
+        return page.navigate(url);
     }
 
     /**
