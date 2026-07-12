@@ -378,6 +378,18 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         return new Tuple4<>(playwright, browser, browserContext, page);
     }
 
+    /**
+     * Closes the Playwright worker held by this instance (or decrements the shared-worker
+     * reference count and closes the shared worker once no client references remain).
+     *
+     * <p>This method synchronizes on the same {@code Page} monitor as {@link #execute(RequestData)},
+     * so it blocks until any in-flight {@code execute()} on this instance's page has finished before
+     * tearing resources down. That wait has no timeout of its own; it is bounded only by whatever
+     * navigation, load-state, content-wait and download timeouts are effectively in force for the
+     * in-flight request (Playwright's own defaults, or the values set via {@link #downloadTimeout},
+     * {@link #contentWaitDuration} and the related setters), so configuring those to very long or
+     * effectively unlimited values lets a single slow request delay {@code close()} for just as long.</p>
+     */
     @Override
     public void close() {
         if (worker == null) {
