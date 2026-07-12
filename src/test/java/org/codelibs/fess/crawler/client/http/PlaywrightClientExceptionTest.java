@@ -18,19 +18,32 @@ package org.codelibs.fess.crawler.client.http;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.util.Optional;
 
 import org.codelibs.core.io.ResourceUtil;
+import org.codelibs.fess.crawler.CrawlerContext;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.codelibs.fess.crawler.util.CrawlerWebServer;
+import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 import org.dbflute.utflute.core.PlainTestCase;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.util.Callback;
 
 import com.microsoft.playwright.BrowserType;
 
@@ -490,6 +503,107 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             assertTrue(e.getMessage().contains("Timeout"));
         } finally {
             playwrightClient.close();
+        }
+    }
+
+    // ==================== ChildUrlsException propagation tests ====================
+
+    /**
+     * Test that a {@link ChildUrlsException} thrown from {@code createResponseData()} (when a redirect
+     * lands on a URL the {@link UrlFilter} rejects as a non-target) PROPAGATES out of {@code execute()}
+     * rather than being swallowed. Before the PR restructured {@code execute()}, that
+     * {@code createResponseData()} call sat inside a broad {@code catch (Exception)} that turned any
+     * such {@code ChildUrlsException} into a download-wait and ultimately a {@link CrawlingAccessException},
+     * hiding the framework's intended child-URL signal.
+     */
+    @Test
+    @Timeout(30)
+    public void test_execute_redirectToNonTargetUrl_childUrlsExceptionPropagates() throws Exception {
+        final int port = 7201;
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                final String path = request.getHttpURI().getPath();
+                if ("/redirect".equals(path)) {
+                    // Redirect to a different path so response.url() differs from the requested URL,
+                    // which is what makes execute() consult the UrlFilter.
+                    response.setStatus(302);
+                    response.getHeaders().put(HttpHeader.LOCATION, "/final.html");
+                    Content.Sink.write(response, true, "", callback);
+                    return true;
+                }
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "<html><body>final page</body></html>", callback);
+                return true;
+            }
+        });
+        server.start();
+
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final PlaywrightClient client = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
+
+        // A UrlFilter that rejects every URL: match() is only consulted for the post-redirect URL, so
+        // returning false forces the "redirected to a non-target URL" ChildUrlsException path.
+        final CrawlerContext crawlerContext = new CrawlerContext();
+        crawlerContext.setUrlFilter(new UrlFilter() {
+            @Override
+            public void init(final String sessionId) {
+            }
+
+            @Override
+            public boolean match(final String url) {
+                return false;
+            }
+
+            @Override
+            public void addInclude(final String urlPattern) {
+            }
+
+            @Override
+            public void addExclude(final String urlPattern) {
+            }
+
+            @Override
+            public void processUrl(final String url) {
+            }
+
+            @Override
+            public void clear() {
+            }
+        });
+
+        try {
+            client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            client.setDownloadTimeout(5);
+            client.setCloseTimeout(5);
+            client.init();
+
+            CrawlingParameterUtil.setCrawlerContext(crawlerContext);
+
+            final String url = "http://[::1]:" + port + "/redirect";
+            try {
+                client.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                fail();
+            } catch (final ChildUrlsException e) {
+                // Expected: the child-URL signal propagates out of execute() unchanged.
+            } catch (final CrawlingAccessException e) {
+                // ChildUrlsException must NOT be swallowed into CrawlingAccessException (the pre-fix bug).
+                fail();
+            }
+        } finally {
+            CrawlingParameterUtil.setCrawlerContext(null);
+            client.close();
+            server.stop();
         }
     }
 }
