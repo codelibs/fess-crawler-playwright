@@ -579,6 +579,107 @@ public class PlaywrightClientConcurrencyTest extends PlainTestCase {
         }
     }
 
+    /**
+     * Test that TWO threads calling {@code close()} on the SAME shared-worker instance at the same
+     * time decrement the shared reference count exactly once.
+     *
+     * <p>Without the {@code closeInvoked} idempotency guard, both closer threads could pass the plain
+     * {@code worker == null} check before either nulled the field and each decrement
+     * {@code SHARED_WORKER_REF_COUNT}, driving it from 2 to 0 and tearing down the shared
+     * page/context/browser that the sibling instance ({@code client2}) is still actively using (and/or
+     * NPE-ing on the second thread's now-nulled {@code worker}). A {@code CountDownLatch} releases both
+     * closer threads at (nearly) the same instant to maximize overlap.</p>
+     *
+     * <p>Assertions: (a) neither concurrent {@code close()} threw an unexpected exception, and (b) the
+     * refcount was decremented only once - proven by {@code client2} still serving a request
+     * successfully afterward, i.e. its shared worker was NOT torn down prematurely.</p>
+     */
+    @Test
+    @Timeout(30)
+    public void test_sharedClient_concurrentDuplicateClose_decrementsRefCountOnce() throws Exception {
+        final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("sharedClient", Boolean.TRUE);
+
+        final PlaywrightClient client1 = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
+
+        final PlaywrightClient client2 = new PlaywrightClient() {
+            @Override
+            protected Optional<MimeTypeHelper> getMimeTypeHelper() {
+                return Optional.ofNullable(mimeTypeHelper);
+            }
+        };
+
+        final ExecutorService executor = Executors.newFixedThreadPool(2, r -> {
+            final Thread thread = new Thread(r, "concurrent-close");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+        try {
+            client1.setInitParameterMap(paramMap);
+            client1.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            client1.setCloseTimeout(5);
+            client1.init();
+
+            client2.setInitParameterMap(paramMap);
+            client2.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
+            client2.setCloseTimeout(5);
+            client2.init();
+
+            final int numClosers = 2;
+            final CountDownLatch ready = new CountDownLatch(numClosers);
+            final CountDownLatch go = new CountDownLatch(1);
+            final CountDownLatch done = new CountDownLatch(numClosers);
+            final AtomicReference<Throwable> unexpectedError = new AtomicReference<>();
+
+            for (int i = 0; i < numClosers; i++) {
+                executor.submit(() -> {
+                    try {
+                        ready.countDown();
+                        go.await(); // release both closers at (nearly) the same instant
+                        client1.close();
+                    } catch (final Throwable t) {
+                        unexpectedError.set(t);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            go.countDown();
+            assertTrue(done.await(30, TimeUnit.SECONDS));
+
+            // (a) Neither concurrent close() threw (e.g. an NPE from reading an already-nulled worker).
+            if (unexpectedError.get() != null) {
+                throw new AssertionError("A concurrent close() threw unexpectedly", unexpectedError.get());
+            }
+
+            // (b) The shared refcount was decremented exactly once (2 -> 1, not 2 -> 0): client2's
+            // shared page/context/browser was NOT torn down, so it must still serve requests.
+            final String url = "http://[::1]:" + SERVER_PORT + "/";
+            assertEquals(200, client2.execute(RequestDataBuilder.newRequestData().get().url(url).build()).getHttpStatusCode());
+        } finally {
+            executor.shutdownNow();
+            try {
+                client1.close();
+            } catch (final Exception e) {
+                // ignore
+            }
+            try {
+                client2.close();
+            } catch (final Exception e) {
+                // ignore
+            }
+        }
+    }
+
     // ==================== Stress tests ====================
 
     /**

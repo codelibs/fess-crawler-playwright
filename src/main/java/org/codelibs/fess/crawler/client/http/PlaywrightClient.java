@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -239,6 +240,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     private volatile boolean closed = false;
 
     /**
+     * Idempotency latch for {@link #close()}: atomically flipped from {@code false} to {@code true} by
+     * the first thread that enters {@code close()}, as that method's very first action - before it
+     * touches {@link #worker}, any {@code Page} monitor, or {@link #INITIALIZATION_LOCK}.
+     *
+     * <p>Guards against a concurrent {@code close()}-vs-{@code close()} race on a single instance: if
+     * two threads call {@code close()} simultaneously, both could otherwise pass the plain
+     * {@code worker == null} check before either nulled the field and each decrement
+     * {@link #SHARED_WORKER_REF_COUNT}, driving a still-in-use shared worker's refcount to zero
+     * prematurely (and/or NPE-ing on the second thread's now-nulled {@code worker}). The loser of the
+     * {@code compareAndSet(false, true)} returns immediately as a no-op - it must NOT block on the
+     * winner (which already tears down exactly once, single-threaded, and correctly waits for in-flight
+     * {@code execute()} calls) nor touch any resource. Reset to {@code false} by {@link #init()}
+     * alongside {@link #closed}, so a re-init()'d instance can be closed again (the normal
+     * single-owner-thread lifecycle). This is a defense-in-depth guard for API misuse; the supported
+     * pattern is one owner thread per instance.
+     */
+    private final AtomicBoolean closeInvoked = new AtomicBoolean(false);
+
+    /**
      * The crawler container instance.
      */
     @Resource
@@ -314,6 +334,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             // surfaces as this class's own "already closed" CrawlerSystemException rather than a raw
             // NullPointerException.
             closed = false;
+            // Re-arm the close() idempotency latch so this freshly (re-)initialized instance can be
+            // closed again. Symmetric with `closed` above; without it a close()-then-init() cycle would
+            // leave the latch set and the next close() would silently no-op (leaking the shared worker).
+            closeInvoked.set(false);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Playwright initialization completed successfully");
@@ -392,6 +416,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     @Override
     public void close() {
+        // Idempotency guard - the very first action, before touching worker, any Page monitor, or
+        // INITIALIZATION_LOCK. If another thread already began closing this instance, return
+        // immediately as a no-op: that thread tears down exactly once (single-threaded from here) and
+        // already waits for any in-flight execute(); a second concurrent close() has no useful work to
+        // do, and duplicating the shared-refcount decrement is the bug this guard prevents. Do NOT
+        // block waiting for the winner. Reset by init() so a re-init()'d instance can be closed again.
+        if (!closeInvoked.compareAndSet(false, true)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("close() already invoked on this instance, skipping");
+            }
+            return;
+        }
+
         if (worker == null) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Worker already null, nothing to close");
