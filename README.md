@@ -2,7 +2,7 @@
 
 [![Java CI with Maven](https://github.com/codelibs/fess-crawler-playwright/actions/workflows/maven.yml/badge.svg)](https://github.com/codelibs/fess-crawler-playwright/actions/workflows/maven.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Maven Central](https://img.shields.io/maven-central/v/org.codelibs.fess/fess-crawler-playwright.svg)](https://search.maven.org/artifact/org.codelibs.fess/fess-crawler-playwright)
+[![Maven Repository](https://img.shields.io/badge/Maven-maven.codelibs.org-blue)](https://maven.codelibs.org/release/org/codelibs/fess/fess-crawler-playwright/)
 
 A Playwright-based web crawler component for [Fess](https://fess.codelibs.org/) that enables JavaScript-rendered web page crawling capabilities. This extension integrates Microsoft Playwright with the Fess crawler framework to handle modern web applications that require JavaScript execution for content rendering.
 
