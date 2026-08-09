@@ -69,9 +69,9 @@ public class PlaywrightClientSslIgnoreTest extends PlainTestCase {
             this.playwrightClient.execute(makeRequestData(url));
             fail();
         } catch (final CrawlerSystemException e) {
-            assertEquals(
-                    "Failed to access the URL. URL: https://[::1]:7020/test.txt, Response received: false, Download started: false, Timeout: 15s",
-                    e.getMessage());
+            // A rejected certificate is a hard navigation failure, so it is reported straight away
+            // rather than after waiting out downloadTimeout for a download that cannot follow.
+            assertEquals("Failed to access the URL. URL: https://[::1]:7020/test.txt", e.getMessage());
         }
     }
 
