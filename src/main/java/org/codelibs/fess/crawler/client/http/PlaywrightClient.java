@@ -230,6 +230,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The timeout for closing the client, in seconds.
+     *
+     * <p>This is the budget for the whole teardown - page, context, browser and driver are closed in
+     * sequence on one background thread, and this bounds the wait for all four together.</p>
      */
     protected int closeTimeout = 15; // 15s
 
@@ -413,6 +416,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Creating new page in browser context");
             }
             page = browserContext.newPage();
+            // A renderer crash leaves the page permanently unusable, and without this the only symptom
+            // is every later request failing with an opaque Playwright error. Log it where it happens.
+            page.onCrash(crashedPage -> logger.warn("The Playwright page crashed while loading {}. "
+                    + "The browser must be recreated before this client can be used again.", crashedPage.url()));
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Playwright worker created successfully");
@@ -517,11 +524,13 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
-     * Closes the Playwright worker in the background.
+     * Runs the teardown on a background thread and waits up to {@link #closeTimeout} for it.
      *
-     * <p>Note: if {@code closer} (e.g. {@code page.close()}) itself hangs past {@link #closeTimeout},
-     * this method gives up waiting and returns, but the abandoned daemon thread may still be running
-     * afterward. This is a pre-existing, separate limitation and is not addressed here.</p>
+     * <p>Note: if {@code closer} hangs past {@link #closeTimeout}, this method gives up waiting and
+     * returns, but the abandoned daemon thread may still be running afterward. That is why there must
+     * be only one such thread per Playwright instance - see {@link #close(Playwright, Browser,
+     * BrowserContext, Page)} - since a second one would then be calling into the same, non-thread-safe
+     * connection concurrently.</p>
      *
      * @param closer The runnable to close the worker.
      */
@@ -561,38 +570,49 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param page The page.
      */
     protected void close(final Playwright playwright, final Browser browser, final BrowserContext context, final Page page) {
+        // Close all four components on ONE background thread, in order.
+        //
+        // Playwright's Java client is not thread-safe: a single Connection object holds the pending
+        // request callbacks and the remote-object registry in plain HashMaps and hands them out with no
+        // synchronization, so two threads must never call into the same Playwright instance at once.
+        // Giving each component its own closer thread broke exactly that - every closer waited only
+        // closeTimeout before giving up and returning, so a page.close() that hung past the timeout was
+        // left running while the next closer began calling context.close() over the same connection.
+        //
+        // Closing them in sequence is also sufficient rather than merely safe: closing the context
+        // closes its pages, and closing the browser closes its contexts, so a component that hangs is
+        // still torn down by the one after it.
         closeInBackground(() -> {
-            if (page != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing Page...");
-                }
-                page.close();
-            }
+            closeQuietly("Page", page, Page::close);
+            closeQuietly("BrowserContext", context, BrowserContext::close);
+            closeQuietly("Browser", browser, Browser::close);
+            closeQuietly("Playwright", playwright, Playwright::close);
         });
-        closeInBackground(() -> {
-            if (context != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing BrowserContext...");
-                }
-                context.close();
+    }
+
+    /**
+     * Closes one Playwright component, reporting - but not propagating - a failure.
+     *
+     * <p>The components are closed in sequence on a single thread, so a failure must not strand the
+     * ones after it: the browser and driver processes are what actually leak when a step is skipped.</p>
+     *
+     * @param <T> The component type.
+     * @param name The component name, for logging.
+     * @param target The component, which may be {@code null}.
+     * @param closer The close operation for the component.
+     */
+    protected <T> void closeQuietly(final String name, final T target, final Consumer<T> closer) {
+        if (target == null) {
+            return;
+        }
+        try {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Closing {}...", name);
             }
-        });
-        closeInBackground(() -> {
-            if (browser != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing Browser...");
-                }
-                browser.close();
-            }
-        });
-        closeInBackground(() -> {
-            if (playwright != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Closing Playwright...");
-                }
-                playwright.close();
-            }
-        });
+            closer.accept(target);
+        } catch (final Exception e) {
+            logger.warn("Failed to close {}.", name, e);
+        }
     }
 
     /**
@@ -683,6 +703,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         synchronized (page) {
             if (closed) {
                 throw new CrawlerSystemException("PlaywrightClient has already been closed. URL: " + url);
+            }
+
+            // A crashed renderer or a disconnected browser cannot be navigated, and every operation
+            // below would fail with an opaque Playwright error instead of saying what is wrong. Neither
+            // is recoverable without recreating the worker, so report it plainly.
+            if (page.isClosed() || !currentWorker.getValue2().isConnected()) {
+                throw new CrawlerSystemException("The Playwright browser is no longer usable (it was closed or crashed). "
+                        + "Restart the crawler so the browser is recreated. URL: " + url);
             }
 
             if (logger.isDebugEnabled()) {
@@ -799,6 +827,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     logger.debug("Resetting page to about:blank");
                 }
                 resetPage(page);
+                closeExtraPages(page);
             }
         }
     }
@@ -972,6 +1001,35 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
         } catch (final Exception e) {
             logger.warn("Could not reset a page.", e);
+        }
+    }
+
+    /**
+     * Closes any page the crawled document opened alongside the one this client drives.
+     *
+     * <p>A {@code window.open()} call - or a {@code target="_blank"} navigation - creates a real page in
+     * the same browser context, and nothing else ever closes it: navigating back to {@code about:blank}
+     * only resets the page we drive. Over a long crawl those pages accumulate, each holding a renderer
+     * process, until the context is closed. Verified against Chromium: two {@code window.open()} calls
+     * take the context from one page to three, and it stays at three across a reset.</p>
+     *
+     * <p>They are closed after the request completes rather than as they appear, so a site that routes
+     * a navigation or a download through a popup still gets to finish it.</p>
+     *
+     * @param page The page this client drives, which is left open.
+     */
+    protected void closeExtraPages(final Page page) {
+        try {
+            for (final Page openedPage : page.context().pages()) {
+                if (openedPage != page && !openedPage.isClosed()) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Closing a page opened by the crawled document: {}", openedPage.url());
+                    }
+                    openedPage.close();
+                }
+            }
+        } catch (final Exception e) {
+            logger.warn("Could not close the pages opened by the crawled document.", e);
         }
     }
 
