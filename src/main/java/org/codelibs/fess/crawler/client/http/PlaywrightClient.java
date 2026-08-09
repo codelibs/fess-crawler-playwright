@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,6 +58,7 @@ import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
@@ -420,6 +422,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             // is every later request failing with an opaque Playwright error. Log it where it happens.
             page.onCrash(crashedPage -> logger.warn("The Playwright page crashed while loading {}. "
                     + "The browser must be recreated before this client can be used again.", crashedPage.url()));
+            applyTimeouts(page);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Playwright worker created successfully");
@@ -434,6 +437,33 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
+    }
+
+    /**
+     * Applies the configured crawler timeouts to the page.
+     *
+     * <p>Without this the page keeps Playwright's own 30 second defaults, so a crawl configured to give
+     * up sooner - or to wait longer - got neither. {@code connectionTimeout} bounds the navigation
+     * itself; {@code soTimeout} bounds the other waits, which is what limits how long
+     * {@link #renderedState} is waited for.</p>
+     *
+     * @param page The page.
+     */
+    protected void applyTimeouts(final Page page) {
+        final Integer connectionTimeout = getInitParameter(HcHttpClient.CONNECTION_TIMEOUT_PROPERTY, null, Integer.class);
+        if (connectionTimeout != null && connectionTimeout > 0) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Setting the navigation timeout to {}ms", connectionTimeout);
+            }
+            page.setDefaultNavigationTimeout(connectionTimeout);
+        }
+        final Integer soTimeout = getInitParameter(HcHttpClient.SO_TIMEOUT_PROPERTY, null, Integer.class);
+        if (soTimeout != null && soTimeout > 0) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Setting the default operation timeout to {}ms", soTimeout);
+            }
+            page.setDefaultTimeout(soTimeout);
+        }
     }
 
     /**
@@ -1108,6 +1138,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             responseData.setResponseBody(new byte[0]);
             responseData.setMimeType(getContentType(response));
         } else if (download == null) {
+            // Check the declared length first: response.body() materialises the whole body in the heap,
+            // so for a server that declares an over-limit length there is no reason to fetch it at all.
+            checkDeclaredContentLength(headers, url);
             final byte[] body = response.body();
             final byte[] responseBody = getMimeTypeHelper().map(mimeTypeHelper -> {
                 final String filename = getFilename(url);
@@ -1178,6 +1211,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     responseData.getMimeType());
         }
 
+        // maxContentLength was read by AbstractCrawlerClient.init() but never enforced here, so this
+        // client indexed content the rest of the crawler would have rejected.
+        checkMaxContentLength(responseData);
+
         return responseData;
     }
 
@@ -1197,6 +1234,35 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return "index.html";
         }
         return value;
+    }
+
+    /**
+     * Fails before the body is fetched when the response declares a length over {@code maxContentLength}.
+     *
+     * @param headers The response headers.
+     * @param url The URL, for the failure message.
+     */
+    protected void checkDeclaredContentLength(final Map<String, String> headers, final String url) {
+        if (maxContentLength == null) {
+            return;
+        }
+        final String contentLength = headers.get("content-length");
+        if (StringUtil.isBlank(contentLength)) {
+            return;
+        }
+        try {
+            final long declaredLength = Long.parseLong(contentLength.trim());
+            if (declaredLength > maxContentLength.longValue()) {
+                throw new MaxLengthExceededException("The content length (" + declaredLength + " byte) is over "
+                        + maxContentLength.longValue() + " byte. The url is " + url);
+            }
+        } catch (final NumberFormatException e) {
+            // A malformed header is not something to fail on: checkMaxContentLength() still bounds the
+            // content once the actual length is known.
+            if (logger.isDebugEnabled()) {
+                logger.debug("Could not parse the content-length header '{}' of {}", contentLength, url);
+            }
+        }
     }
 
     /**
@@ -1331,6 +1397,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             options.ignoreHTTPSErrors = true;
         }
 
+        // The browser's own user agent identifies it as HeadlessChrome, which is both wrong (it is not
+        // what the crawl is configured to send) and routinely blocked. Fess always supplies this
+        // parameter, so without applying it the configured user agent silently had no effect.
+        final String userAgent = getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class);
+        if (StringUtil.isNotBlank(userAgent)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using the configured user agent: {}", userAgent);
+            }
+            options.setUserAgent(userAgent);
+        }
+
+        final Map<String, String> extraHttpHeaders = getExtraHttpHeaders();
+        if (!extraHttpHeaders.isEmpty()) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Applying {} configured request header(s)", extraHttpHeaders.size());
+            }
+            options.setExtraHTTPHeaders(extraHttpHeaders);
+        }
+
         // append existing proxy configuration
         final String proxyHost = getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class);
         final Integer proxyPort = getInitParameter(HcHttpClient.PROXY_PORT_PROPERTY, null, Integer.class);
@@ -1358,6 +1443,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         return options;
+    }
+
+    /**
+     * Builds the extra HTTP headers to send with every request from the configured request headers.
+     *
+     * <p>HTTP allows a header to appear more than once, but Playwright takes a plain map, so repeated
+     * names are joined into the single comma-separated value that is equivalent per RFC 9110.</p>
+     *
+     * @return The headers to set on the browser context, empty if none are configured.
+     */
+    protected Map<String, String> getExtraHttpHeaders() {
+        final RequestHeader[] requestHeaders =
+                getInitParameter(HcHttpClient.REQUEST_HEADERS_PROPERTY, new RequestHeader[0], RequestHeader[].class);
+        final Map<String, String> headers = new LinkedHashMap<>();
+        for (final RequestHeader requestHeader : requestHeaders) {
+            if (requestHeader.isValid()) {
+                headers.merge(requestHeader.getName(), requestHeader.getValue(), (existing, added) -> existing + ", " + added);
+            }
+        }
+        return headers;
     }
 
     /**

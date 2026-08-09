@@ -248,11 +248,23 @@ Tests use a local Jetty server (`CrawlerWebServer`) with test content in `src/te
 |----------|---------|-------------|
 | `browserName` | `chromium` | Browser type: chromium, firefox, webkit |
 | `sharedClient` | `false` | Enable shared Playwright worker |
-| `downloadTimeout` | `15000` | Download timeout in milliseconds |
-| `closeTimeout` | `15000` | Resource cleanup timeout in milliseconds |
-| `renderedState` | `LOAD` | When to extract content: LOAD, DOMCONTENTLOADED, NETWORKIDLE |
-| `contentWaitDuration` | `0` | Additional wait time before content extraction |
+| `downloadTimeout` | `15` | Download timeout in seconds |
+| `closeTimeout` | `15` | Resource cleanup timeout in seconds, for the whole teardown |
+| `renderedState` | `NETWORKIDLE` | When to extract content: LOAD, DOMCONTENTLOADED, NETWORKIDLE |
+| `contentWaitDuration` | `0` | Additional wait time before content extraction, in milliseconds |
 | `ignoreHttpsErrors` | `false` | Skip SSL certificate validation |
+| `proxyBypass` | - | Comma-separated hosts to bypass the proxy for |
+
+These crawler settings are shared with the other Fess crawler clients and are applied to the browser
+as well:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `userAgent` | browser default | User agent to send. Without it the browser announces itself as HeadlessChrome |
+| `requestHeaders` | - | Extra request headers. Repeated names are joined into one comma-separated value |
+| `connectionTimeout` | `30000` (Playwright default) | Navigation timeout in milliseconds |
+| `soTimeout` | `30000` (Playwright default) | Timeout for the other browser waits, in milliseconds. This is what bounds the `renderedState` wait |
+| `maxContentLength` | - | Maximum content length in bytes |
 
 ## Troubleshooting
 

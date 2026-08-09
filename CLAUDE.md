@@ -95,6 +95,11 @@ Factory for registering PlaywrightClient with URL patterns.
 | `proxyBypass` | - | Comma-separated bypass patterns |
 | `http.proxyHost` | - | Proxy hostname |
 | `http.proxyPort` | - | Proxy port |
+| `userAgent` | browser default | User agent to send |
+| `requestHeaders` | - | Extra request headers (`RequestHeader[]`) |
+| `connectionTimeout` | Playwright default (30s) | Navigation timeout (ms) |
+| `soTimeout` | Playwright default (30s) | Timeout for other waits, incl. `renderedState` (ms) |
+| `maxContentLength` | - | Maximum content length in bytes |
 
 ## Testing
 
