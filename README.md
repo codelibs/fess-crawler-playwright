@@ -255,6 +255,8 @@ Tests use a local Jetty server (`CrawlerWebServer`) with test content in `src/te
 | `ignoreHttpsErrors` | `false` | Skip SSL certificate validation |
 | `proxyBypass` | - | Comma-separated hosts to bypass the proxy for |
 | `blockedResourceTypes` | - | Comma-separated Playwright resource types the browser should not fetch, e.g. `image,media,font` |
+| `navigationTimeout` | `30000` (Playwright default) | How long a navigation may take, in milliseconds |
+| `renderedStateTimeout` | `30000` (Playwright default) | How long to wait for `renderedState`, in milliseconds. Running out is not a failure: the content that did load is used |
 
 These crawler settings are shared with the other Fess crawler clients and are applied to the browser
 as well:
@@ -263,9 +265,12 @@ as well:
 |----------|---------|-------------|
 | `userAgent` | browser default | User agent to send. Without it the browser announces itself as HeadlessChrome |
 | `requestHeaders` | - | Extra request headers. Repeated names are joined into one comma-separated value |
-| `connectionTimeout` | `30000` (Playwright default) | Navigation timeout in milliseconds |
-| `soTimeout` | `30000` (Playwright default) | Timeout for the other browser waits, in milliseconds. This is what bounds the `renderedState` wait |
 | `maxContentLength` | - | Maximum content length in bytes |
+
+`connectionTimeout` and `soTimeout` are deliberately **not** applied to the browser. Both bound a single
+socket operation, whereas a Playwright timeout bounds a whole browser operation - the values commonly
+recommended for them would become a hard deadline for loading an entire page. Use the two properties
+above (`navigationTimeout`, `renderedStateTimeout`) instead.
 
 ## Troubleshooting
 
