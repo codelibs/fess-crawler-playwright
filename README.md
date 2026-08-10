@@ -254,6 +254,7 @@ Tests use a local Jetty server (`CrawlerWebServer`) with test content in `src/te
 | `contentWaitDuration` | `0` | Additional wait time before content extraction, in milliseconds |
 | `ignoreHttpsErrors` | `false` | Skip SSL certificate validation |
 | `proxyBypass` | - | Comma-separated hosts to bypass the proxy for |
+| `blockedResourceTypes` | - | Comma-separated Playwright resource types the browser should not fetch, e.g. `image,media,font` |
 
 These crawler settings are shared with the other Fess crawler clients and are applied to the browser
 as well:

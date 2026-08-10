@@ -30,12 +30,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -155,6 +157,17 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * The key to specify whether to ignore HTTPS errors.
      */
     protected static final String IGNORE_HTTPS_ERRORS_PROPERTY = "ignoreHttpsErrors";
+
+    /**
+     * The key to specify the resource types the browser should not fetch, as a comma-separated list of
+     * Playwright resource types ({@code image}, {@code media}, {@code font}, {@code stylesheet},
+     * {@code script}, {@code xhr}, {@code fetch}, {@code websocket}, {@code manifest},
+     * {@code texttrack}, {@code eventsource}, {@code other}).
+     *
+     * <p>Empty by default, so nothing is intercepted unless it is configured: interception itself costs
+     * a round trip per request, and which resources a crawl can do without depends on the site.</p>
+     */
+    protected static final String BLOCKED_RESOURCE_TYPES_PROPERTY = "blockedResourceTypes";
 
     /**
      * The key to specify a proxy bypass.
@@ -423,6 +436,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             page.onCrash(crashedPage -> logger.warn("The Playwright page crashed while loading {}. "
                     + "The browser must be recreated before this client can be used again.", crashedPage.url()));
             applyTimeouts(page);
+            applyResourceBlocking(page);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Playwright worker created successfully");
@@ -437,6 +451,63 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
+    }
+
+    /**
+     * Makes the browser refuse to fetch the configured resource types.
+     *
+     * <p>A crawl reads the document, but the browser fetches everything the page references - images,
+     * video, fonts, trackers - for every page, and then the configured {@link #renderedState} waits for
+     * all of it. Declining the resource types a crawl does not read saves that bandwidth and time.
+     * Aborted requests still settle, so {@code NETWORKIDLE} is reached sooner rather than later.</p>
+     *
+     * <p>{@code image}, {@code media} and {@code font} are the safe set. Blocking {@code script} or
+     * {@code xhr} defeats the point of using a browser at all, since it is what renders the content
+     * this client exists to reach - but it is allowed here, because a crawl restricted to server-
+     * rendered pages can legitimately want it.</p>
+     *
+     * @param page The page.
+     */
+    protected void applyResourceBlocking(final Page page) {
+        final Set<String> blockedResourceTypes = getBlockedResourceTypes();
+        if (blockedResourceTypes.isEmpty()) {
+            // Register no route at all: an interception handler is consulted for every single request,
+            // so an "allow everything" handler would be pure overhead.
+            return;
+        }
+
+        logger.info("Blocking these resource types: {}", blockedResourceTypes);
+        page.route("**/*", route -> {
+            try {
+                if (blockedResourceTypes.contains(route.request().resourceType())) {
+                    route.abort();
+                } else {
+                    route.resume();
+                }
+            } catch (final Exception e) {
+                // The page can be torn down with requests still in flight, and a handler that throws
+                // would leave the request hanging until it times out instead of failing with the page.
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Could not handle the intercepted request {}", route.request().url(), e);
+                }
+            }
+        });
+    }
+
+    /**
+     * Gets the configured resource types that the browser should not fetch.
+     *
+     * @return The resource types to block, lower-cased, or an empty set if none are configured.
+     */
+    protected Set<String> getBlockedResourceTypes() {
+        final String blockedResourceTypes = getInitParameter(BLOCKED_RESOURCE_TYPES_PROPERTY, null, String.class);
+        if (StringUtil.isBlank(blockedResourceTypes)) {
+            return Collections.emptySet();
+        }
+        return StreamUtil.split(blockedResourceTypes, ",")
+                .get(stream -> stream.map(value -> value.trim().toLowerCase(Locale.ROOT))
+                        .filter(StringUtil::isNotBlank)
+                        .collect(Collectors.toSet()));
     }
 
     /**

@@ -93,6 +93,7 @@ Factory for registering PlaywrightClient with URL patterns.
 | `contentWaitDuration` | `0` | Extra wait before extraction (ms) |
 | `ignoreHttpsErrors` | `false` | Skip SSL certificate validation |
 | `proxyBypass` | - | Comma-separated bypass patterns |
+| `blockedResourceTypes` | - | Resource types not to fetch, e.g. `image,media,font` |
 | `http.proxyHost` | - | Proxy hostname |
 | `http.proxyPort` | - | Proxy port |
 | `userAgent` | browser default | User agent to send |
