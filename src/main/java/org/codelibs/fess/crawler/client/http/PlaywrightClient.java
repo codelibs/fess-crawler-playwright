@@ -1016,6 +1016,17 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * <p>They are closed after the request completes rather than as they appear, so a site that routes
      * a navigation or a download through a popup still gets to finish it.</p>
      *
+     * <p>Every page in this context other than the one passed in was opened by the document, so no page
+     * in use can be caught by this. The context has exactly one page of its own - {@code newPage()} is
+     * called once, when the worker is created - and a shared worker does not change that: every client
+     * using it holds the very same {@code Page} instance, and {@link #execute(RequestData)} calls this
+     * while holding that page's monitor, so no other client can be mid-request on it.</p>
+     *
+     * <p>Deliberately not narrowed to {@link Page#opener()}: a popup opened by a popup reports the popup
+     * as its opener, so filtering on it would leak exactly the pages that nest. (It would not buy
+     * anything either - verified against Chromium, {@code opener()} still reports the opener even for a
+     * popup opened with {@code noopener}, so it identifies no page that this does not.)</p>
+     *
      * @param page The page this client drives, which is left open.
      */
     protected void closeExtraPages(final Page page) {

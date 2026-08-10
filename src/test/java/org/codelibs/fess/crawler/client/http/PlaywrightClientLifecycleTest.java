@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
@@ -46,6 +48,10 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
     private static final boolean HEADLESS = true;
 
     private static PlaywrightClient newClient() {
+        return newClient(new HashMap<>());
+    }
+
+    private static PlaywrightClient newClient(final Map<String, Object> paramMap) {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient client = new PlaywrightClient() {
             @Override
@@ -53,6 +59,7 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
                 return Optional.ofNullable(mimeTypeHelper);
             }
         };
+        client.setInitParameterMap(paramMap);
         client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
         client.setDownloadTimeout(5);
         client.setCloseTimeout(10);
@@ -129,6 +136,47 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
             }
         } finally {
             client.close();
+            server.stop();
+        }
+    }
+
+    /**
+     * Reclaiming the pages a document opened must never take out a page that is in use.
+     *
+     * <p>A shared worker is the only configuration in which another client could hold a page in the
+     * same context, and it holds the very same page: the worker owns exactly one, and every client using
+     * the shared worker gets that identical instance. So a crawl that spawns popups through one client
+     * leaves the other client's page open and usable.</p>
+     */
+    @Test
+    @Timeout(60)
+    public void test_sharedWorker_reclaimingPopupsLeavesTheOtherClientUsable() throws Exception {
+        final int port = 7612;
+        final Server server = startServer(port,
+                "<html><body>popup host<script>" + "window.open('about:blank');window.open('about:blank');</script></body></html>");
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
+        final PlaywrightClient first = newClient(paramMap);
+        final PlaywrightClient second = newClient(paramMap);
+        try {
+            first.init();
+            second.init();
+
+            // Both clients drive the same page, so "every other page is a popup" holds for both.
+            assertTrue(first.worker.getValue4() == second.worker.getValue4());
+            assertTrue(first.worker.getValue3() == second.worker.getValue3());
+
+            final String url = "http://[::1]:" + port + "/";
+            first.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+            assertEquals(1, first.worker.getValue3().pages().size());
+
+            // The shared page survived the reclaim and still works for the other client.
+            assertFalse(second.worker.getValue4().isClosed());
+            assertEquals(200, second.execute(RequestDataBuilder.newRequestData().get().url(url).build()).getHttpStatusCode());
+        } finally {
+            // Both references have to go for the shared worker to be released.
+            first.close();
+            second.close();
             server.stop();
         }
     }
