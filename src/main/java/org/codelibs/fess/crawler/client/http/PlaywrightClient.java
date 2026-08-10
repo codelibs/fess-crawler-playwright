@@ -69,6 +69,7 @@ import com.microsoft.playwright.BrowserType.LaunchOptions;
 import com.microsoft.playwright.Download;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.Response;
 import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.Cookie;
@@ -175,6 +176,32 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * and this value is an implementation detail, not something operators need to tune.</p>
      */
     protected static final long LOAD_STATE_TIMEOUT_GRACE_PERIOD_MILLIS = 1500L;
+
+    /**
+     * The marker Playwright puts in a navigation error when the navigation was aborted because the
+     * target turned out to be a download rather than a document.
+     *
+     * <p>Verified against Playwright 1.60 / Chromium: navigating to a URL that responds with
+     * {@code Content-Disposition: attachment} fails with {@code "Download is starting"}, whereas a
+     * genuinely unreachable target fails with a {@code net::ERR_*} message and an unresponsive one
+     * with a {@link TimeoutError}. That difference is what lets {@link #execute(RequestData)} avoid
+     * waiting {@link #downloadTimeout} for a download that can never arrive.</p>
+     */
+    protected static final String DOWNLOAD_STARTING_MARKER = "Download is starting";
+
+    /**
+     * The Chromium network error for an aborted navigation, which is how a navigation that turns into
+     * a download is reported by browser/Playwright combinations that do not use
+     * {@link #DOWNLOAD_STARTING_MARKER}. Matched in addition to that marker so the download fallback
+     * is not tied to one browser's exact wording.
+     */
+    protected static final String NAVIGATION_ABORTED_MARKER = "net::ERR_ABORTED";
+
+    /**
+     * The maximum number of {@code getCause()} hops {@link #isDownloadNavigationFailure(Throwable)}
+     * follows, so a self-referential or cyclic cause chain cannot spin forever.
+     */
+    private static final int MAX_CAUSE_DEPTH = 16;
 
     /**
      * A map of options for Playwright.
@@ -638,8 +665,19 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
 
-        // Create handler references for proper cleanup
-        final Consumer<Response> responseHandler = response -> responseRef.compareAndSet(null, response);
+        // Create handler references for proper cleanup.
+        //
+        // Keep the LATEST main-frame navigation response rather than the first one. A server-side
+        // redirect emits one response event per hop, so a first-wins handler captures the 3xx - which
+        // carries neither content-type nor last-modified - and every field derived from it would then
+        // describe the redirect instead of the resource the browser actually fetched. Restricting the
+        // handler to navigation requests on the main frame keeps subresources (images, scripts, XHR)
+        // from clobbering it in return.
+        final Consumer<Response> responseHandler = response -> {
+            if (response.request().isNavigationRequest() && response.frame() == page.mainFrame()) {
+                responseRef.set(response);
+            }
+        };
         final Consumer<Download> downloadHandler = download -> downloadRef.compareAndSet(null, download);
 
         synchronized (page) {
@@ -666,8 +704,20 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     }
                     response = navigate(page, url);
                 } catch (final Exception e) {
+                    if (downloadRef.get() == null && !isDownloadNavigationFailure(e)) {
+                        // A hard navigation failure - DNS/connection/TLS error, or a navigation timeout -
+                        // can never turn into a download, so fail immediately. Waiting the full
+                        // downloadTimeout here (the previous behaviour, which treated every navigation
+                        // exception as a possible download) cost that timeout for every dead link, and a
+                        // single PlaywrightClient instance serves every crawler thread, so the wait was
+                        // paid serially across the whole crawl.
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Page navigation failed and is not a download: {}", e.getMessage());
+                        }
+                        throw new CrawlingAccessException("Failed to access the URL. URL: " + url, e);
+                    }
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Page navigation failed, attempting to handle as file download: {}", e.getMessage());
+                        logger.debug("Page navigation was aborted for a download, waiting for it to start: {}", e.getMessage());
                     }
                     return waitForDownloadOrFail(page, request, responseRef, downloadRef, e);
                 }
@@ -785,6 +835,34 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
+     * Determines whether a failure thrown by {@link #navigate(Page, String)} means the navigation was
+     * aborted because the target is a download, rather than because the target could not be reached.
+     *
+     * <p>All three browsers abort in-page navigation when the response turns out to be a download, so
+     * the only way to tell "this is a file, wait for the download" apart from "this URL is dead" is the
+     * failure itself. Anything that is not recognised here is treated as a hard failure and reported
+     * immediately instead of waiting {@link #downloadTimeout} for a download that will never start.</p>
+     *
+     * @param failure The failure thrown by the navigation attempt.
+     * @return {@code true} if the navigation was aborted in favour of a download.
+     */
+    protected boolean isDownloadNavigationFailure(final Throwable failure) {
+        Throwable current = failure;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            final String message = current.getMessage();
+            if (message != null && (message.contains(DOWNLOAD_STARTING_MARKER) || message.contains(NAVIGATION_ABORTED_MARKER))) {
+                return true;
+            }
+            final Throwable cause = current.getCause();
+            if (cause == current) {
+                break;
+            }
+            current = cause;
+        }
+        return false;
+    }
+
+    /**
      * Waits for a download to be detected (via the {@code responseRef}/{@code downloadRef} handlers
      * registered in {@link #execute(RequestData)}), or fails with a {@link CrawlingAccessException}
      * if none is detected within {@link #downloadTimeout}.
@@ -840,24 +918,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected ResponseData pollForDownload(final Page page, final RequestData request, final AtomicReference<Response> responseRef,
             final AtomicReference<Download> downloadRef, final long maxWaitMillis) {
-        // Wait for download with progressive backoff for responsiveness
-        // Start with short intervals, increase over time to balance responsiveness and CPU efficiency
-        // Note: page.waitForTimeout() is required to drive Playwright's event loop
         final long startTime = System.currentTimeMillis();
-        long pollInterval = 100L; // Start with 100ms
-        while (System.currentTimeMillis() - startTime < maxWaitMillis) {
-            if (responseRef.get() != null && downloadRef.get() != null) {
-                break;
+        try {
+            // waitForCondition drives Playwright's event loop (so the onResponse/onDownload handlers
+            // registered by execute() can fire) and re-evaluates the condition on every event, so it
+            // returns as soon as the download surfaces instead of on a fixed poll boundary.
+            page.waitForCondition(() -> responseRef.get() != null && downloadRef.get() != null,
+                    new Page.WaitForConditionOptions().setTimeout(maxWaitMillis));
+        } catch (final TimeoutError e) {
+            // Expected: no download showed up in time. Not an error here - the caller decides whether a
+            // miss is fatal (waitForDownloadOrFail) or a graceful fall-back (the LoadState grace poll).
+            if (logger.isDebugEnabled()) {
+                logger.debug("No download was detected within {}ms for URL: {}", maxWaitMillis, request.getUrl());
             }
-            try {
-                page.waitForTimeout(pollInterval);
-                // Progressive backoff: 100ms -> 200ms -> 400ms -> 500ms (max)
-                if (pollInterval < 500L) {
-                    pollInterval = Math.min(pollInterval * 2, 500L);
-                }
-            } catch (final Exception ignored) {
-                // ignore timeout exceptions during polling
-            }
+        } catch (final PlaywrightException e) {
+            // The page is closed or has crashed, so no further event can arrive. Give up immediately and
+            // let the caller report the original failure. This must NOT be retried in a loop: the
+            // previous hand-rolled poll swallowed exactly this exception without sleeping, which turned
+            // the wait into a busy loop that burned a core for the whole timeout (measured at ~22,000
+            // iterations per second against a closed page).
+            logger.warn("Could not wait for a download on URL: {}", request.getUrl(), e);
         }
         if (logger.isDebugEnabled()) {
             final long elapsed = System.currentTimeMillis() - startTime;
@@ -913,7 +993,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final ResponseData responseData = new ResponseData();
 
         final String originalUrl = request.getUrl();
-        final String url = response.url();
+        // For a download, the captured response describes the navigation the browser aborted, while
+        // download.url() is the URL the bytes were actually fetched from. Record and filter on that one.
+        final String url = download != null ? download.url() : response.url();
         if (!originalUrl.equals(url)) {
             final CrawlerContext context = CrawlingParameterUtil.getCrawlerContext();
             if (context != null) {
@@ -941,13 +1023,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             logger.debug("Response - StatusCode: {}, CharSet: {}, LastModified: {}", statusCode, charSet, responseData.getLastModified());
         }
 
-        response.allHeaders().entrySet().forEach(e -> responseData.addMetaData(e.getKey(), e.getValue()));
+        // Read the headers once: every allHeaders() call is a round trip to the browser process.
+        final Map<String, String> headers = response.allHeaders();
+        headers.forEach(responseData::addMetaData);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Response headers count: {}", response.allHeaders().size());
+            logger.debug("Response headers count: {}", headers.size());
         }
 
-        if (statusCode > 400) {
+        if (statusCode >= 400) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Error status code {}, returning empty response body", statusCode);
             }
@@ -1003,7 +1087,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
 
                 getMimeTypeHelper().ifPresent(mimeTypeHelper -> {
-                    final String filename = getFilename(url);
+                    final String filename = getDownloadFilename(download, url);
                     try (final InputStream in = new FileInputStream(tempFile)) {
                         final String contentType = mimeTypeHelper.getContentType(in, filename);
                         responseData.setMimeType(contentType);
@@ -1044,6 +1128,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return "index.html";
         }
         return value;
+    }
+
+    /**
+     * Gets the filename to use for MIME type detection of a downloaded file.
+     *
+     * <p>Prefers the name the browser derived from the response (its {@code Content-Disposition}
+     * header, falling back to the URL path), because the download URL frequently carries no usable
+     * name at all - {@code /download?id=123} yields no extension for the detector to work with, while
+     * the suggested filename for the same response is the real {@code report.pdf}.</p>
+     *
+     * @param download The download.
+     * @param url The URL the download was fetched from, used when no filename was suggested.
+     * @return The filename.
+     */
+    protected String getDownloadFilename(final Download download, final String url) {
+        final String suggestedFilename = download.suggestedFilename();
+        if (StringUtil.isNotBlank(suggestedFilename)) {
+            return suggestedFilename;
+        }
+        return getFilename(url);
     }
 
     /**

@@ -477,10 +477,17 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
     }
 
     /**
-     * Test that exception messages contain timeout information.
+     * Test that an unreachable host fails immediately instead of waiting out the download timeout.
+     *
+     * <p>A navigation that cannot connect can never turn into a download, so the client must not spend
+     * {@code downloadTimeout} waiting for one. This previously did wait - every navigation failure was
+     * treated as a possible download - and the resulting message mentioned a "Timeout" that no actual
+     * timeout had produced. The wait is paid serially across a crawl, because one client instance
+     * serves every crawler thread, so a run over dead links used to stall on it.</p>
      */
     @Test
-    public void test_exception_messageContainsTimeout() {
+    @Timeout(60)
+    public void test_exception_unreachableHostFailsFast() {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
         final PlaywrightClient playwrightClient = new PlaywrightClient() {
             @Override
@@ -491,16 +498,21 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
 
         try {
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
-            playwrightClient.setDownloadTimeout(3);
+            playwrightClient.setDownloadTimeout(20);
             playwrightClient.setCloseTimeout(5);
             playwrightClient.init();
 
             final String url = "http://127.0.0.1:59996/";
-            playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
-            fail();
-        } catch (final CrawlingAccessException e) {
-            // Exception message should contain timeout information
-            assertTrue(e.getMessage().contains("Timeout"));
+            final long start = System.currentTimeMillis();
+            try {
+                playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
+                fail();
+            } catch (final CrawlingAccessException e) {
+                assertTrue(e.getMessage().contains("Failed to access"));
+                assertTrue(e.getMessage().contains(url));
+            }
+            // Comfortably under the 20s download timeout that the old behaviour would have waited out.
+            assertTrue(System.currentTimeMillis() - start < 10000L);
         } finally {
             playwrightClient.close();
         }
