@@ -98,8 +98,8 @@ Factory for registering PlaywrightClient with URL patterns.
 | `http.proxyPort` | - | Proxy port |
 | `userAgent` | browser default | User agent to send |
 | `requestHeaders` | - | Extra request headers (`RequestHeader[]`) |
-| `connectionTimeout` | Playwright default (30s) | Navigation timeout (ms) |
-| `soTimeout` | Playwright default (30s) | Timeout for other waits, incl. `renderedState` (ms) |
+| `navigationTimeout` | Playwright default (30s) | How long a navigation may take (ms) |
+| `renderedStateTimeout` | Playwright default (30s) | How long to wait for `renderedState` (ms); running out is not a failure |
 | `maxContentLength` | - | Maximum content length in bytes |
 
 ## Testing

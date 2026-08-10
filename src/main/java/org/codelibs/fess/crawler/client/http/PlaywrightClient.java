@@ -46,6 +46,7 @@ import java.time.Instant;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.codelibs.core.io.CloseableUtil;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.lang.ThreadUtil;
 import org.codelibs.core.misc.Tuple4;
@@ -152,6 +153,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * The key to specify a content wait duration.
      */
     protected static final String CONTENT_WAIT_DURATION = "contentWaitDuration";
+
+    /**
+     * The key to specify how long a navigation may take, in milliseconds.
+     *
+     * <p>Playwright-specific on purpose. The crawler's {@code connectionTimeout} is not used for this:
+     * there it bounds establishing the connection, whereas here it would bound the entire navigation up
+     * to the load event, and the documented values for it (5-10 seconds) are generous for a connection
+     * but short for loading a script-heavy page - which is the kind of page this client exists for.</p>
+     */
+    protected static final String NAVIGATION_TIMEOUT_PROPERTY = "navigationTimeout";
+
+    /**
+     * The key to specify how long to wait for {@link #renderedState}, in milliseconds.
+     *
+     * <p>Applied only to that wait, rather than through {@link Page#setDefaultTimeout(double)} which
+     * would also cap navigation (verified against Playwright 1.60: a page with only
+     * {@code setDefaultTimeout(2000)} fails navigation after 2004ms). Running out here is not a failure
+     * - the page did load, it just never went quiet - so the content that did load is still used.</p>
+     */
+    protected static final String RENDERED_STATE_TIMEOUT_PROPERTY = "renderedStateTimeout";
 
     /**
      * The key to specify whether to ignore HTTPS errors.
@@ -262,6 +283,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected long contentWaitDuration = 0;
 
     /**
+     * How long to wait for {@link #renderedState}, in milliseconds. Zero leaves Playwright's own
+     * default in force.
+     */
+    protected long renderedStateTimeout = 0;
+
+    /**
      * The worker instance for Playwright.
      *
      * <p>Volatile (like {@link #usingSharedWorker} and {@link #closed}) so that
@@ -341,9 +368,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
 
             contentWaitDuration = getInitParameter(CONTENT_WAIT_DURATION, 0L, Long.class);
+            renderedStateTimeout = getInitParameter(RENDERED_STATE_TIMEOUT_PROPERTY, 0L, Long.class);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Configured renderedState: {}, contentWaitDuration: {}ms", renderedState, contentWaitDuration);
+                logger.debug("Configured renderedState: {}, contentWaitDuration: {}ms, renderedStateTimeout: {}ms", renderedState,
+                        contentWaitDuration, renderedStateTimeout);
             }
 
             final Boolean shared = getInitParameter(SHARED_CLIENT, Boolean.FALSE, Boolean.class);
@@ -513,27 +542,21 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Applies the configured crawler timeouts to the page.
      *
-     * <p>Without this the page keeps Playwright's own 30 second defaults, so a crawl configured to give
-     * up sooner - or to wait longer - got neither. {@code connectionTimeout} bounds the navigation
-     * itself; {@code soTimeout} bounds the other waits, which is what limits how long
-     * {@link #renderedState} is waited for.</p>
+     * <p>Only {@link #NAVIGATION_TIMEOUT_PROPERTY} is honoured here, and only for navigation. The
+     * crawler's {@code connectionTimeout} and {@code soTimeout} are deliberately not mapped onto
+     * Playwright's timeouts: both describe how long a single socket operation may take, while
+     * Playwright's bound a whole browser operation, so reusing them would silently give a documented
+     * setting a much stricter meaning than the one it was chosen for.</p>
      *
      * @param page The page.
      */
     protected void applyTimeouts(final Page page) {
-        final Integer connectionTimeout = getInitParameter(HcHttpClient.CONNECTION_TIMEOUT_PROPERTY, null, Integer.class);
-        if (connectionTimeout != null && connectionTimeout > 0) {
+        final Integer navigationTimeout = getInitParameter(NAVIGATION_TIMEOUT_PROPERTY, null, Integer.class);
+        if (navigationTimeout != null && navigationTimeout > 0) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Setting the navigation timeout to {}ms", connectionTimeout);
+                logger.debug("Setting the navigation timeout to {}ms", navigationTimeout);
             }
-            page.setDefaultNavigationTimeout(connectionTimeout);
-        }
-        final Integer soTimeout = getInitParameter(HcHttpClient.SO_TIMEOUT_PROPERTY, null, Integer.class);
-        if (soTimeout != null && soTimeout > 0) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Setting the default operation timeout to {}ms", soTimeout);
-            }
-            page.setDefaultTimeout(soTimeout);
+            page.setDefaultNavigationTimeout(navigationTimeout);
         }
     }
 
@@ -952,6 +975,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Waits for the page to reach the given load state.
      *
+     * <p>Applies {@link #RENDERED_STATE_TIMEOUT_PROPERTY} when it is configured, so this wait can be
+     * bounded without capping navigation as {@link Page#setDefaultTimeout(double)} would.</p>
+     *
      * <p>Extracted as its own protected method (rather than calling {@link Page#waitForLoadState(LoadState)}
      * directly from {@link #execute(RequestData)}) purely as a test seam, so tests can simulate a
      * non-timeout {@link com.microsoft.playwright.PlaywrightException} (e.g. a page/browser crash) without
@@ -961,6 +987,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @param state The load state to wait for.
      */
     protected void waitForLoadState(final Page page, final LoadState state) {
+        if (renderedStateTimeout > 0L) {
+            page.waitForLoadState(state, new Page.WaitForLoadStateOptions().setTimeout(renderedStateTimeout));
+            return;
+        }
         page.waitForLoadState(state);
     }
 
@@ -1284,7 +1314,16 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
         // maxContentLength was read by AbstractCrawlerClient.init() but never enforced here, so this
         // client indexed content the rest of the crawler would have rejected.
-        checkMaxContentLength(responseData);
+        try {
+            checkMaxContentLength(responseData);
+        } catch (final MaxLengthExceededException e) {
+            // A download has already been written to a temp file and handed to responseData, and the
+            // caller never sees the instance when this throws - CrawlerThread only closes what execute()
+            // returned - so nothing else would ever delete it. Release it here instead of leaving it on
+            // disk for the lifetime of the machine (createTempFile does not register deleteOnExit).
+            CloseableUtil.closeQuietly(responseData);
+            throw e;
+        }
 
         return responseData;
     }

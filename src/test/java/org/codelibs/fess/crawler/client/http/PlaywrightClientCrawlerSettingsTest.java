@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -208,28 +210,16 @@ public class PlaywrightClientCrawlerSettingsTest extends PlainTestCase {
     }
 
     /**
-     * The configured connection timeout must bound the navigation. Without it the page keeps
+     * The configured navigation timeout must bound the navigation. Without it the page keeps
      * Playwright's own 30 second default, so a crawl configured to give up sooner did not.
      */
     @Test
     @Timeout(60)
-    public void test_connectionTimeout() throws Exception {
+    public void test_navigationTimeout() throws Exception {
         final int port = 7624;
-        final Server server = new Server();
-        final ServerConnector connector = new ServerConnector(server);
-        connector.setPort(port);
-        server.addConnector(connector);
-        server.setHandler(new Handler.Abstract() {
-            @Override
-            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
-                // Never respond, so only the navigation timeout can end the request.
-                return true;
-            }
-        });
-        server.start();
-
+        final Server server = startNeverRespondingServer(port);
         final Map<String, Object> paramMap = new HashMap<>();
-        paramMap.put(HcHttpClient.CONNECTION_TIMEOUT_PROPERTY, 3000);
+        paramMap.put("navigationTimeout", 3000);
         final PlaywrightClient client = newClient(paramMap);
         try {
             client.init();
@@ -241,11 +231,185 @@ public class PlaywrightClientCrawlerSettingsTest extends PlainTestCase {
                 assertTrue(e.getMessage().contains("Failed to access"));
             }
             final long elapsed = System.currentTimeMillis() - start;
-            // Comfortably under Playwright's own 30s default, which is what applied before.
+            // Comfortably under Playwright's own 30s default, which is what applies when unset.
             assertTrue(elapsed < 15000L);
         } finally {
             client.close();
             server.stop();
         }
+    }
+
+    /**
+     * The crawler's socket-level timeouts must not be reused as Playwright's operation timeouts.
+     *
+     * <p>{@code connectionTimeout} bounds establishing a connection and {@code soTimeout} bounds a
+     * single read, but a Playwright timeout bounds the whole navigation up to the load event - and
+     * `Page.setDefaultTimeout()` caps navigation too, not just the other waits. Mapping either onto
+     * Playwright turns the values the documentation recommends for slow sites (5-10 seconds) into a
+     * hard deadline for loading an entire script-heavy page, which fails exactly the sites they were
+     * set to accommodate. This page responds slowly but perfectly well, so it must still be crawled.</p>
+     */
+    @Test
+    @Timeout(60)
+    public void test_socketTimeoutsDoNotBoundNavigation() throws Exception {
+        final int port = 7625;
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                Thread.sleep(3000L);
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "<html><body>slow but fine</body></html>", callback);
+                return true;
+            }
+        });
+        server.start();
+
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put(HcHttpClient.CONNECTION_TIMEOUT_PROPERTY, 1000);
+        paramMap.put(HcHttpClient.SO_TIMEOUT_PROPERTY, 1000);
+        final PlaywrightClient client = newClient(paramMap);
+        try {
+            client.init();
+            final ResponseData responseData =
+                    client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/").build());
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertTrue(bodyOf(responseData).contains("slow but fine"));
+        } finally {
+            client.close();
+            server.stop();
+        }
+    }
+
+    /**
+     * The renderedState wait must be boundable, and running out of it is not a failure: the page did
+     * load, it just never went quiet, so the content that did load is still returned.
+     */
+    @Test
+    @Timeout(60)
+    public void test_renderedStateTimeout() throws Exception {
+        final int port = 7626;
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                if ("/never".equals(request.getHttpURI().getPath())) {
+                    // Keeps the page from ever reaching NETWORKIDLE.
+                    return true;
+                }
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "<html><body>rendered anyway<script>fetch('/never');</script></body></html>", callback);
+                return true;
+            }
+        });
+        server.start();
+
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("renderedState", "NETWORKIDLE");
+        paramMap.put("renderedStateTimeout", 2000L);
+        final PlaywrightClient client = newClient(paramMap);
+        try {
+            client.init();
+            final long start = System.currentTimeMillis();
+            final ResponseData responseData =
+                    client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/").build());
+            final long elapsed = System.currentTimeMillis() - start;
+
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertTrue(bodyOf(responseData).contains("rendered anyway"));
+            // Playwright's own default would have made this wait 30s.
+            assertTrue(elapsed < 20000L);
+        } finally {
+            client.close();
+            server.stop();
+        }
+    }
+
+    /**
+     * Exceeding maxContentLength on a download must not leave the temp file behind.
+     *
+     * <p>The body has already been written to a temp file and handed to the ResponseData by the time
+     * the limit is checked, and the caller never sees that instance when the check throws - CrawlerThread
+     * only closes what execute() returned - so nothing else would ever delete it, and createTempFile
+     * does not register deleteOnExit.</p>
+     */
+    @Test
+    @Timeout(60)
+    public void test_maxContentLength_downloadDoesNotLeaveTheTempFileBehind() throws Exception {
+        final int port = 7627;
+        final byte[] payload = new byte[8192];
+        for (int i = 0; i < payload.length; i++) {
+            payload[i] = (byte) (i % 251);
+        }
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/octet-stream");
+                response.getHeaders().put(HttpHeader.CONTENT_DISPOSITION, "attachment; filename=\"big.bin\"");
+                // No content-length, so the pre-fetch check cannot short-circuit it and the download
+                // really is written to disk before the limit is applied.
+                response.write(true, ByteBuffer.wrap(payload), callback);
+                return true;
+            }
+        });
+        server.start();
+
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("maxContentLength", 1024L);
+        final PlaywrightClient client = newClient(paramMap);
+        try {
+            client.init();
+            final int before = countCrawlerTempFiles();
+            try {
+                client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/dl").build());
+                fail();
+            } catch (final MaxLengthExceededException e) {
+                assertTrue(e.getMessage().contains("1024"));
+            }
+            // Deleted in the background, so give the deletion a moment to land.
+            int after = countCrawlerTempFiles();
+            for (int i = 0; i < 40 && after > before; i++) {
+                Thread.sleep(250L);
+                after = countCrawlerTempFiles();
+            }
+            assertEquals(before, after);
+        } finally {
+            client.close();
+            server.stop();
+        }
+    }
+
+    private static int countCrawlerTempFiles() {
+        final File tempDir = new File(System.getProperty("java.io.tmpdir"));
+        final File[] files = tempDir.listFiles((dir, name) -> name.startsWith("fess-crawler-playwright-") && name.endsWith(".tmp"));
+        return files == null ? 0 : files.length;
+    }
+
+    private static Server startNeverRespondingServer(final int port) throws Exception {
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                return true;
+            }
+        });
+        server.start();
+        return server;
     }
 }
