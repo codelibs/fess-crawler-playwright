@@ -16,7 +16,9 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -55,6 +57,16 @@ public class PlaywrightClientResourceBlockingTest extends PlainTestCase {
 
     private static final String PAGE = "<html><head><link rel=\"stylesheet\" href=\"/style.css\"></head>"
             + "<body>blocked resource page<img src=\"/pixel.gif\"></body></html>";
+
+    /** Opens a second page in the same context, which no page-scoped route would cover. */
+    private static final String OPENER_PAGE = "<html><body>opener page<script>window.open('/popup.html');</script></body></html>";
+
+    /**
+     * The blocked references come first, so a stylesheet request proves the popup got past them rather
+     * than simply having been closed before it reached them.
+     */
+    private static final String POPUP_PAGE = "<html><body>popup page<img src=\"/popup-pixel.gif\">"
+            + "<script src=\"/popup.js\"></script><link rel=\"stylesheet\" href=\"/popup-style.css\"></body></html>";
 
     private static PlaywrightClient newClient(final Map<String, Object> paramMap) {
         final MimeTypeHelper mimeTypeHelper = new MimeTypeHelperImpl();
@@ -102,6 +114,72 @@ public class PlaywrightClientResourceBlockingTest extends PlainTestCase {
         });
         server.start();
         return server;
+    }
+
+    /**
+     * Starts a server whose entry page opens a popup that references a blockable image and script, plus
+     * a stylesheet that is left alone as a control.
+     */
+    private static Server startPopupServer(final int port, final Set<String> requestedPaths) throws Exception {
+        final Server server = new Server();
+        final ServerConnector connector = new ServerConnector(server);
+        connector.setPort(port);
+        server.addConnector(connector);
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                final String path = request.getHttpURI().getPath();
+                requestedPaths.add(path);
+                response.setStatus(200);
+                if ("/popup-pixel.gif".equals(path)) {
+                    response.getHeaders().put(HttpHeader.CONTENT_TYPE, "image/gif");
+                    response.write(true, ByteBuffer.wrap(PIXEL_GIF), callback);
+                    return true;
+                }
+                if ("/popup.js".equals(path)) {
+                    response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/javascript");
+                    Content.Sink.write(response, true, "void 0;", callback);
+                    return true;
+                }
+                if ("/popup-style.css".equals(path)) {
+                    response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/css");
+                    Content.Sink.write(response, true, "body{color:#000}", callback);
+                    return true;
+                }
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "/popup.html".equals(path) ? POPUP_PAGE : OPENER_PAGE, callback);
+                return true;
+            }
+        });
+        server.start();
+        return server;
+    }
+
+    /**
+     * Records the warnings the parser emits, so they can be asserted without capturing the log.
+     */
+    private static class WarningRecordingClient extends PlaywrightClient {
+        final List<String> unknownResourceTypes = new ArrayList<>();
+
+        int documentWarnings;
+
+        @Override
+        protected void warnUnknownResourceType(final String resourceType) {
+            unknownResourceTypes.add(resourceType);
+        }
+
+        @Override
+        protected void warnDocumentResourceTypeIgnored() {
+            documentWarnings++;
+        }
+    }
+
+    private static WarningRecordingClient newWarningRecordingClient(final String blockedResourceTypes) {
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("blockedResourceTypes", blockedResourceTypes);
+        final WarningRecordingClient client = new WarningRecordingClient();
+        client.setInitParameterMap(paramMap);
+        return client;
     }
 
     /**
@@ -177,5 +255,133 @@ public class PlaywrightClientResourceBlockingTest extends PlainTestCase {
         final Map<String, Object> blankMap = new HashMap<>();
         blankMap.put("blockedResourceTypes", "   ");
         assertTrue(newClient(blankMap).getBlockedResourceTypes().isEmpty());
+    }
+
+    /**
+     * The known set is the union the Playwright driver bundle actually maps to, which is wider than the
+     * public type definitions. Pinned so that a driver upgrade dropping or renaming a type is noticed
+     * here rather than through a warning about a value that used to work.
+     */
+    @Test
+    public void test_knownResourceTypes() {
+        assertEquals(Set.of("document", "stylesheet", "image", "media", "font", "script", "texttrack", "xhr", "fetch", "eventsource",
+                "websocket", "manifest", "other", "ping", "cspreport", "beacon"), PlaywrightClient.KNOWN_RESOURCE_TYPES);
+        assertEquals(16, PlaywrightClient.KNOWN_RESOURCE_TYPES.size());
+    }
+
+    /**
+     * A value no engine reports blocks nothing at all, so it must not pass unnoticed. It is still
+     * returned as configured: the warning is the whole of the change.
+     */
+    @Test
+    @Timeout(30)
+    public void test_getBlockedResourceTypes_warnsAboutUnknownTypes() {
+        final WarningRecordingClient client = newWarningRecordingClient("images, image, StyleSheets");
+
+        assertEquals(Set.of("images", "image", "stylesheets"), client.getBlockedResourceTypes());
+        assertEquals(List.of("images", "stylesheets"), client.unknownResourceTypes);
+        assertEquals(0, client.documentWarnings);
+    }
+
+    /**
+     * Every value in the known set is accepted without a warning, so a correctly configured crawl is
+     * never told off - including {@code ping}, {@code beacon} and {@code cspreport}, which the public
+     * type definitions omit.
+     */
+    @Test
+    @Timeout(30)
+    public void test_getBlockedResourceTypes_acceptsEveryKnownType() {
+        final WarningRecordingClient client = newWarningRecordingClient(String.join(",", PlaywrightClient.KNOWN_RESOURCE_TYPES));
+
+        final Set<String> blockedResourceTypes = client.getBlockedResourceTypes();
+        assertEquals(List.of(), client.unknownResourceTypes);
+        assertTrue(blockedResourceTypes.contains("ping"));
+        assertTrue(blockedResourceTypes.contains("beacon"));
+        assertTrue(blockedResourceTypes.contains("cspreport"));
+        // Only "document" is dropped.
+        assertFalse(blockedResourceTypes.contains("document"));
+        assertEquals(1, client.documentWarnings);
+        assertEquals(PlaywrightClient.KNOWN_RESOURCE_TYPES.size() - 1, blockedResourceTypes.size());
+    }
+
+    /**
+     * {@code document} is dropped with a warning rather than honoured, while the rest of the list is
+     * kept.
+     */
+    @Test
+    @Timeout(30)
+    public void test_getBlockedResourceTypes_dropsDocument() {
+        final WarningRecordingClient client = newWarningRecordingClient(" Document , image ");
+
+        assertEquals(Set.of("image"), client.getBlockedResourceTypes());
+        assertEquals(1, client.documentWarnings);
+        assertEquals(List.of(), client.unknownResourceTypes);
+    }
+
+    /**
+     * Blocking {@code document} would abort the navigation itself, so every URL would fail with an
+     * access error naming neither this setting nor anything else actionable. Dropping it keeps the
+     * crawl working, and the rest of the configured list still takes effect.
+     */
+    @Test
+    @Timeout(60)
+    public void test_documentIsIgnoredSoTheCrawlStillSucceeds() throws Exception {
+        final int port = 7632;
+        final Set<String> requestedPaths = ConcurrentHashMap.newKeySet();
+        final Server server = startServer(port, requestedPaths);
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("blockedResourceTypes", "document,image");
+        final PlaywrightClient client = newClient(paramMap);
+        try {
+            client.init();
+            final ResponseData responseData =
+                    client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/").build());
+
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertTrue(new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet())
+                    .contains("blocked resource page"));
+
+            assertFalse(requestedPaths.contains("/pixel.gif"));
+            assertTrue(requestedPaths.contains("/style.css"));
+        } finally {
+            client.close();
+            server.stop();
+        }
+    }
+
+    /**
+     * A document that calls {@code window.open()} gets its own page, which a page-scoped route would not
+     * cover: it would fetch every blocked resource at full price before the crawl closes it. The
+     * stylesheet is the control - it is not blocked, so requesting it proves the popup really did load
+     * its resources rather than having been closed too early for the assertions below to mean anything.
+     */
+    @Test
+    @Timeout(60)
+    public void test_popupResourcesAreBlocked() throws Exception {
+        final int port = 7633;
+        final Set<String> requestedPaths = ConcurrentHashMap.newKeySet();
+        final Server server = startPopupServer(port, requestedPaths);
+        final Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("blockedResourceTypes", "image,script");
+        // The popup loads alongside the crawled page, so give it time to finish before it is closed.
+        paramMap.put("contentWaitDuration", 3000L);
+        final PlaywrightClient client = newClient(paramMap);
+        try {
+            client.init();
+            final ResponseData responseData =
+                    client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/").build());
+
+            assertEquals(200, responseData.getHttpStatusCode());
+            assertTrue(new String(InputStreamUtil.getBytes(responseData.getResponseBody()), responseData.getCharSet())
+                    .contains("opener page"));
+
+            assertTrue(requestedPaths.contains("/popup.html"));
+            assertTrue(requestedPaths.contains("/popup-style.css"));
+            assertFalse(requestedPaths.contains("/popup-pixel.gif"));
+            assertFalse(requestedPaths.contains("/popup.js"));
+        } finally {
+            client.close();
+            server.stop();
+        }
     }
 }
