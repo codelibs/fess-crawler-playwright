@@ -20,6 +20,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
@@ -37,6 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -49,6 +53,7 @@ import org.apache.logging.log4j.Logger;
 import org.codelibs.core.io.CloseableUtil;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.lang.ThreadUtil;
+import org.codelibs.core.misc.Pair;
 import org.codelibs.core.misc.Tuple4;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
@@ -1257,7 +1262,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                             if (logger.isDebugEnabled()) {
                                 logger.debug("html content: {}", content);
                             }
-                            return content.getBytes(charSet);
+                            // Not charSet: the header's charset is not what the bytes will be read back
+                            // with once the document declares one of its own.
+                            final Pair<byte[], String> encoded = encodeContent(content);
+                            responseData.setCharSet(encoded.getSecond());
+                            return encoded.getFirst();
                         } catch (final Exception e) {
                             if (logger.isDebugEnabled()) {
                                 logger.debug("Could not get a content from page.", e);
@@ -1457,7 +1466,99 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
+     * The charset declaration the downstream HTML transformer looks for in the bytes this client
+     * emits. Deliberately the same pattern that transformer uses, semicolon and all - which is why the
+     * HTML5 {@code <meta charset="...">} short form never matches it.
+     */
+    private static final Pattern CONTENT_CHARSET_PATTERN = Pattern.compile("; *charset *= *([a-zA-Z0-9\\-_]+)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * How many leading bytes that transformer reads while looking for the declaration. Mirrors the
+     * default of its {@code preloadSizeForCharset} property, which is settable: a crawl that changes it
+     * moves the window on one side only, and the agreement described in {@link #encodeContent(String)}
+     * is lost with it.
+     */
+    private static final int CONTENT_CHARSET_SCAN_SIZE = 2048;
+
+    /**
+     * Encodes serialised HTML so that the bytes can be read back with the charset the downstream HTML
+     * transformer is going to pick for them.
+     *
+     * <p>{@code page.content()} serialises the DOM, so a charset declared in the document survives into
+     * these bytes. The transformer downstream re-reads that declaration and overwrites the response's
+     * charset with what it finds, so encoding with the charset taken from the {@code Content-Type}
+     * header writes the bytes one way and has them read another - and the whole document decodes to
+     * mojibake. That overwrite cannot be prevented from here, so the only way to stay consistent is to
+     * reach the same answer it will: this runs the transformer's own rule over the bytes about to be
+     * emitted. That rule is a loose one - it is not anchored to a meta tag, so body text can match it -
+     * but a declaration it misreads is misread identically on both sides, and the bytes still
+     * round-trip.</p>
+     *
+     * <p>A charset the document declares may not be able to represent every character the page renders,
+     * an emoji in a Shift_JIS page for instance, and those characters become {@code ?}. That is a
+     * narrower loss than the entire document decoding as mojibake, which is what the two sides
+     * disagreeing costs.</p>
+     *
+     * @param content the serialised HTML
+     * @return the bytes to store, and the charset name they are encoded in
+     */
+    protected Pair<byte[], String> encodeContent(final String content) {
+        final byte[] utf8Bytes = content.getBytes(StandardCharsets.UTF_8);
+        final String declared = scanCharset(utf8Bytes);
+        if (declared == null || Constants.UTF_8.equalsIgnoreCase(declared)) {
+            return new Pair<>(utf8Bytes, Constants.UTF_8);
+        }
+
+        final Charset charset;
+        try {
+            charset = Charset.forName(declared);
+        } catch (final Exception e) {
+            // The transformer discards a charset name it cannot resolve and reads UTF-8 instead.
+            if (logger.isDebugEnabled()) {
+                logger.debug("Unresolvable charset {} declared in content; storing UTF-8.", declared);
+            }
+            return new Pair<>(utf8Bytes, Constants.UTF_8);
+        }
+
+        final byte[] bytes = content.getBytes(charset);
+        if (!declared.equalsIgnoreCase(scanCharset(bytes))) {
+            // A charset that spends more bytes per character than UTF-8 can push the declaration past
+            // the window, and the transformer would then read these bytes as UTF-8. Neither encoding
+            // agrees with it once that happens, so keep UTF-8: those bytes at least match the charset
+            // they are labelled with, and no character is lost to '?'.
+            if (logger.isDebugEnabled()) {
+                logger.debug("Encoding as {} moved the declaration out of the first {} bytes; storing UTF-8.", declared,
+                        CONTENT_CHARSET_SCAN_SIZE);
+            }
+            return new Pair<>(utf8Bytes, Constants.UTF_8);
+        }
+        return new Pair<>(bytes, declared);
+    }
+
+    /**
+     * Reads the charset declaration out of the leading bytes of a document, the way the downstream HTML
+     * transformer reads it.
+     *
+     * @param bytes the encoded document
+     * @return the declared charset name, or null if the scanned window declares none
+     */
+    protected String scanCharset(final byte[] bytes) {
+        // ISO-8859-1 maps every byte to one character, so the window stays a byte count and an ASCII
+        // declaration is preserved whatever the document is really encoded in. The transformer decodes
+        // this window with the platform default charset instead, but that reads the same declaration:
+        // the semicolon it starts with is not a valid trailing byte in any of these encodings, so a
+        // decoder resynchronises on it.
+        final String head = new String(bytes, 0, Math.min(bytes.length, CONTENT_CHARSET_SCAN_SIZE), StandardCharsets.ISO_8859_1);
+        final Matcher matcher = CONTENT_CHARSET_PATTERN.matcher(head);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    /**
      * Gets the character set from the response.
+     *
+     * <p>Only the {@code Content-Type} header is read. For an HTML page the charset this returns is
+     * superseded by {@link #encodeContent(String)}, which has to answer to the document's own
+     * declaration as well.</p>
      *
      * @param response The response.
      * @return The character set.
