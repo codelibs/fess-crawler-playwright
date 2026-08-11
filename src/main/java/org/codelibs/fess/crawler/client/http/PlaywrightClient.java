@@ -260,7 +260,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected NewContextOptions newContextOptions;
 
     /**
-     * The timeout for downloading a file, in seconds.
+     * The timeout for downloading a file, in seconds. Zero or less does not wait at all, so only a
+     * download that has already been observed is used.
      */
     protected int downloadTimeout = 15; // 15s
 
@@ -1068,36 +1069,47 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * method itself never fails on timeout - it returns {@code null} so the caller can decide whether a
      * miss is a hard failure or a graceful fall-back.</p>
      *
+     * <p>A {@code maxWaitMillis} of zero or less means "do not wait": only a download that has already
+     * been observed is reported, and anything still in flight counts as a miss.</p>
+     *
      * @param page The page.
      * @param request The request data.
      * @param responseRef A reference populated by the page's {@code onResponse} handler, if any.
      * @param downloadRef A reference populated by the page's {@code onDownload} handler, if any.
-     * @param maxWaitMillis The maximum time to poll, in milliseconds.
+     * @param maxWaitMillis The maximum time to poll, in milliseconds. Zero or less does not wait at all.
      * @return The response data for the detected download, or {@code null} if a response and a download
      *         were not both observed within {@code maxWaitMillis}.
      */
     protected ResponseData pollForDownload(final Page page, final RequestData request, final AtomicReference<Response> responseRef,
             final AtomicReference<Download> downloadRef, final long maxWaitMillis) {
         final long startTime = System.currentTimeMillis();
-        try {
-            // waitForCondition drives Playwright's event loop (so the onResponse/onDownload handlers
-            // registered by execute() can fire) and re-evaluates the condition on every event, so it
-            // returns as soon as the download surfaces instead of on a fixed poll boundary.
-            page.waitForCondition(() -> responseRef.get() != null && downloadRef.get() != null,
-                    new Page.WaitForConditionOptions().setTimeout(maxWaitMillis));
-        } catch (final TimeoutError e) {
-            // Expected: no download showed up in time. Not an error here - the caller decides whether a
-            // miss is fatal (waitForDownloadOrFail) or a graceful fall-back (the LoadState grace poll).
-            if (logger.isDebugEnabled()) {
-                logger.debug("No download was detected within {}ms for URL: {}", maxWaitMillis, request.getUrl());
+        // Playwright reads a timeout of exactly 0 as "no timeout at all", so passing a non-positive
+        // maxWaitMillis straight through would wait forever rather than not wait at all. That is not a
+        // wait anyone can escape: it happens while execute() holds the page's monitor, so the crawl and
+        // close() both block on it for good. Treat "do not wait" as exactly that, and let the caller
+        // report the miss - which is what a zero timeout did before this wait became Playwright-native.
+        if (maxWaitMillis > 0L) {
+            try {
+                // waitForCondition drives Playwright's event loop (so the onResponse/onDownload handlers
+                // registered by execute() can fire) and re-evaluates the condition on every event, so it
+                // returns as soon as the download surfaces instead of on a fixed poll boundary.
+                page.waitForCondition(() -> responseRef.get() != null && downloadRef.get() != null,
+                        new Page.WaitForConditionOptions().setTimeout(maxWaitMillis));
+            } catch (final TimeoutError e) {
+                // Expected: no download showed up in time. Not an error here - the caller decides whether
+                // a miss is fatal (waitForDownloadOrFail) or a graceful fall-back (the LoadState grace
+                // poll).
+                if (logger.isDebugEnabled()) {
+                    logger.debug("No download was detected within {}ms for URL: {}", maxWaitMillis, request.getUrl());
+                }
+            } catch (final PlaywrightException e) {
+                // The page is closed or has crashed, so no further event can arrive. Give up immediately
+                // and let the caller report the original failure. This must NOT be retried in a loop: the
+                // previous hand-rolled poll swallowed exactly this exception without sleeping, which
+                // turned the wait into a busy loop that burned a core for the whole timeout (measured at
+                // ~22,000 iterations per second against a closed page).
+                logger.warn("Could not wait for a download on URL: {}", request.getUrl(), e);
             }
-        } catch (final PlaywrightException e) {
-            // The page is closed or has crashed, so no further event can arrive. Give up immediately and
-            // let the caller report the original failure. This must NOT be retried in a loop: the
-            // previous hand-rolled poll swallowed exactly this exception without sleeping, which turned
-            // the wait into a busy loop that burned a core for the whole timeout (measured at ~22,000
-            // iterations per second against a closed page).
-            logger.warn("Could not wait for a download on URL: {}", request.getUrl(), e);
         }
         if (logger.isDebugEnabled()) {
             final long elapsed = System.currentTimeMillis() - startTime;
@@ -1671,7 +1683,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Sets the download timeout.
      *
-     * @param downloadTimeout The download timeout.
+     * @param downloadTimeout The download timeout, in seconds. Zero or less does not wait at all, which
+     *            fails every download that has not already been observed.
      */
     public void setDownloadTimeout(final int downloadTimeout) {
         this.downloadTimeout = downloadTimeout;

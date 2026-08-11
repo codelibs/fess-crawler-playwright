@@ -118,8 +118,8 @@ client.setLaunchOptions(launchOptions);
 client.setRenderedState(LoadState.NETWORKIDLE);
 
 // Configure timeouts
-client.setDownloadTimeout(15000); // 15 seconds
-client.setCloseTimeout(15000);    // 15 seconds
+client.setDownloadTimeout(15); // 15 seconds
+client.setCloseTimeout(15);    // 15 seconds
 ```
 
 ### Authentication Setup
@@ -178,7 +178,7 @@ String content = new String(responseData.getResponseBody(), responseData.getChar
 ```java
 PlaywrightClient client = new PlaywrightClient();
 client.setBrowserName("chromium");
-client.setDownloadTimeout(30000); // 30 seconds for large files
+client.setDownloadTimeout(30); // 30 seconds for large files
 client.init();
 
 // The client automatically handles downloads for PDF, images, documents, etc.

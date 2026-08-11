@@ -217,4 +217,56 @@ public class PlaywrightClientResponseTest extends PlainTestCase {
             server.stop();
         }
     }
+
+    /**
+     * A {@code downloadTimeout} of zero means "do not wait", so the failure has to come back
+     * immediately - it must never turn into a wait with no end.
+     *
+     * <p>Playwright reads a timeout of exactly {@code 0} as "no timeout at all", so handing the
+     * configured value straight to {@link Page#waitForCondition} makes a zero block forever on a
+     * download that never arrives. That wait is held inside the page's monitor, so it takes the crawl
+     * and {@link PlaywrightClient#close()} down with it, and neither can be interrupted.</p>
+     *
+     * <p>Asserted twice on purpose: the {@link Timeout} keeps a regression from hanging the build, and
+     * the elapsed-time check keeps the test honest about "immediately" rather than merely "eventually".</p>
+     */
+    @Test
+    @Timeout(30)
+    public void test_waitForDownloadOrFail_zeroTimeoutFailsFast() throws Exception {
+        final int port = 7604;
+        final Server server = startServer(port, new Handler.Abstract() {
+            @Override
+            public boolean handle(final Request request, final Response response, final Callback callback) throws Exception {
+                response.setStatus(200);
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/html;charset=UTF-8");
+                Content.Sink.write(response, true, "<html><body>page</body></html>", callback);
+                return true;
+            }
+        });
+        final PlaywrightClient client = newClient();
+        try {
+            client.setDownloadTimeout(0);
+            client.init();
+            client.execute(RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/").build());
+
+            final RequestData request = RequestDataBuilder.newRequestData().get().url("http://[::1]:" + port + "/never").build();
+            final Page page = client.worker.getValue4();
+            final long start = System.currentTimeMillis();
+            try {
+                // Nothing will ever populate these references, and nothing is allowed to wait for them.
+                client.waitForDownloadOrFail(page, request, new AtomicReference<>(), new AtomicReference<Download>(),
+                        new IllegalStateException("Download is starting"));
+                fail();
+            } catch (final CrawlingAccessException e) {
+                assertTrue(e.getMessage().contains("Timeout: 0s"));
+                assertTrue(e.getMessage().contains(request.getUrl()));
+            }
+            final long elapsed = System.currentTimeMillis() - start;
+            log("waitForDownloadOrFail returned after " + elapsed + "ms with downloadTimeout=0");
+            assertTrue(elapsed < 5000L);
+        } finally {
+            client.close();
+            server.stop();
+        }
+    }
 }
