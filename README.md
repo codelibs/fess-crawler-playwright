@@ -254,9 +254,29 @@ Tests use a local Jetty server (`CrawlerWebServer`) with test content in `src/te
 | `contentWaitDuration` | `0` | Additional wait time before content extraction, in milliseconds |
 | `ignoreHttpsErrors` | `false` | Skip SSL certificate validation |
 | `proxyBypass` | - | Comma-separated hosts to bypass the proxy for |
-| `blockedResourceTypes` | - | Comma-separated Playwright resource types the browser should not fetch, e.g. `image,media,font` |
+| `blockedResourceTypes` | - | Comma-separated Playwright resource types the browser should not fetch, e.g. `image,media,font`. See below |
 | `navigationTimeout` | `30000` (Playwright default) | How long a navigation may take, in milliseconds |
 | `renderedStateTimeout` | `30000` (Playwright default) | How long to wait for `renderedState`, in milliseconds. Running out is not a failure: the content that did load is used |
+
+#### `blockedResourceTypes`
+
+The accepted values are the Playwright resource types, i.e. the union of what the three engines report:
+
+`stylesheet`, `image`, `media`, `font`, `script`, `texttrack`, `xhr`, `fetch`, `eventsource`,
+`websocket`, `manifest`, `other`, `ping`, `cspreport`, `beacon`
+
+- `image`, `media`, `font`, `ping`, `beacon` and `cspreport` are the safe set. The last three are
+  beacon-style tracker traffic that nothing on the page reads back.
+- `script` and `xhr` are accepted but defeat the point of using a browser, unless the crawl is
+  restricted to server-rendered pages.
+- `document` is **ignored with a warning**: it is the crawled page itself, so blocking it would fail
+  every URL with an access error that says nothing about this setting.
+- A value that is not in the list above is kept but warned about; it matches no request, so it blocks
+  nothing. A plural typo such as `images` is silently useless without that warning.
+- The list is a union, so a known value may still never be reported by the browser in use:
+  `texttrack` is Chromium-only, and WebKit reports neither `media` nor `manifest`.
+
+Blocking applies to pages the crawled document opens with `window.open()` as well.
 
 These crawler settings are shared with the other Fess crawler clients and are applied to the browser
 as well:

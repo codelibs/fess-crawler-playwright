@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -181,14 +182,38 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The key to specify the resource types the browser should not fetch, as a comma-separated list of
-     * Playwright resource types ({@code image}, {@code media}, {@code font}, {@code stylesheet},
-     * {@code script}, {@code xhr}, {@code fetch}, {@code websocket}, {@code manifest},
-     * {@code texttrack}, {@code eventsource}, {@code other}).
+     * the Playwright resource types listed in {@link #KNOWN_RESOURCE_TYPES}.
      *
      * <p>Empty by default, so nothing is intercepted unless it is configured: interception itself costs
      * a round trip per request, and which resources a crawl can do without depends on the site.</p>
+     *
+     * <p>Parsed leniently - unknown values are warned about rather than rejected - except for
+     * {@code document}, which is dropped because it would fail every URL. See
+     * {@link #getBlockedResourceTypes()}.</p>
      */
     protected static final String BLOCKED_RESOURCE_TYPES_PROPERTY = "blockedResourceTypes";
+
+    /**
+     * The resource type of the page being crawled, as opposed to the resources it references.
+     */
+    protected static final String DOCUMENT_RESOURCE_TYPE = "document";
+
+    /**
+     * Every resource type a browser engine can report for an intercepted request.
+     *
+     * <p>The union across the three engines, read out of the Playwright 1.60 driver bundle rather than
+     * copied from the public type definitions, which list only 13 of these: Chromium additionally
+     * reports {@code ping} and {@code cspreport}, Firefox {@code cspreport} and {@code beacon}, and
+     * WebKit {@code ping} and {@code beacon}. Those three are exactly the beacon-style requests that
+     * blocking is most often configured to suppress, so leaving them out would warn about a value that
+     * works.</p>
+     *
+     * <p>Being a union, it is wider than what any single engine reports: {@code texttrack} comes from
+     * Chromium only, and WebKit reports neither {@code media} nor {@code manifest}. A value here is
+     * therefore known, but not necessarily reachable with the configured browser.</p>
+     */
+    protected static final Set<String> KNOWN_RESOURCE_TYPES = Set.of(DOCUMENT_RESOURCE_TYPE, "stylesheet", "image", "media", "font",
+            "script", "texttrack", "xhr", "fetch", "eventsource", "websocket", "manifest", "other", "ping", "cspreport", "beacon");
 
     /**
      * The key to specify a proxy bypass.
@@ -490,12 +515,23 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * all of it. Declining the resource types a crawl does not read saves that bandwidth and time.
      * Aborted requests still settle, so {@code NETWORKIDLE} is reached sooner rather than later.</p>
      *
-     * <p>{@code image}, {@code media} and {@code font} are the safe set. Blocking {@code script} or
+     * <p>{@code image}, {@code media} and {@code font} are the safe set, and {@code ping},
+     * {@code beacon} and {@code cspreport} are safe too - nothing on the page reads them, and they are
+     * exactly the tracker traffic this is usually turned on for. Blocking {@code script} or
      * {@code xhr} defeats the point of using a browser at all, since it is what renders the content
      * this client exists to reach - but it is allowed here, because a crawl restricted to server-
-     * rendered pages can legitimately want it.</p>
+     * rendered pages can legitimately want it. {@code document} is not blockable at all and is dropped
+     * by {@link #getBlockedResourceTypes()}.</p>
      *
-     * @param page The page.
+     * <p>Configuring a type the browser in use never reports simply blocks nothing: {@code texttrack}
+     * is reported by Chromium only, and WebKit reports neither {@code media} nor {@code manifest}.</p>
+     *
+     * <p>The route is registered on the {@link BrowserContext}, not on the page: a document that calls
+     * {@code window.open()} gets a second page, and a page-scoped route would not apply to it, so it
+     * would fetch every blocked resource at full price before {@link #closeExtraPages(Page)} closes it.
+     * This costs nothing here, because the context has exactly one page of its own.</p>
+     *
+     * @param page The page whose context the route is registered on.
      */
     protected void applyResourceBlocking(final Page page) {
         final Set<String> blockedResourceTypes = getBlockedResourceTypes();
@@ -506,7 +542,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         logger.info("Blocking these resource types: {}", blockedResourceTypes);
-        page.route("**/*", route -> {
+        page.context().route("**/*", route -> {
             try {
                 if (blockedResourceTypes.contains(route.request().resourceType())) {
                     route.abort();
@@ -526,6 +562,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Gets the configured resource types that the browser should not fetch.
      *
+     * <p>Whitespace and case are tolerated, an unrecognized value is kept but warned about, and
+     * {@code document} is dropped with a warning. Nothing here throws: a bad value in this setting is
+     * not worth failing a crawl over, but it must not pass unnoticed either - see
+     * {@link #warnUnknownResourceType(String)} and {@link #warnDocumentResourceTypeIgnored()}.</p>
+     *
      * @return The resource types to block, lower-cased, or an empty set if none are configured.
      */
     protected Set<String> getBlockedResourceTypes() {
@@ -533,10 +574,50 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         if (StringUtil.isBlank(blockedResourceTypes)) {
             return Collections.emptySet();
         }
-        return StreamUtil.split(blockedResourceTypes, ",")
+        final Set<String> resourceTypes = StreamUtil.split(blockedResourceTypes, ",")
                 .get(stream -> stream.map(value -> value.trim().toLowerCase(Locale.ROOT))
                         .filter(StringUtil::isNotBlank)
-                        .collect(Collectors.toSet()));
+                        .collect(Collectors.toCollection(LinkedHashSet::new)));
+        // Fully consumed before the removal below, so the set is never modified while it is streamed.
+        resourceTypes.stream().filter(resourceType -> !KNOWN_RESOURCE_TYPES.contains(resourceType)).forEach(this::warnUnknownResourceType);
+        if (resourceTypes.remove(DOCUMENT_RESOURCE_TYPE)) {
+            warnDocumentResourceTypeIgnored();
+        }
+        return resourceTypes;
+    }
+
+    /**
+     * Reports a configured resource type that no browser engine reports, so it can never match.
+     *
+     * <p>Left in the returned set on purpose: this class parses its init parameters leniently, and the
+     * value is inert anyway. The warning exists because the failure is otherwise completely silent - a
+     * plural typo such as {@code images} blocks nothing, and the only other trace is the one-off
+     * "Blocking these resource types" line, which a shared worker logs once for every client that goes
+     * on to use it.</p>
+     *
+     * <p>A method of its own so it can be observed without capturing the log.</p>
+     *
+     * @param resourceType The unrecognized resource type.
+     */
+    protected void warnUnknownResourceType(final String resourceType) {
+        logger.warn("Unknown resource type '{}' in {}: it matches no request, so it blocks nothing. Known resource types: {}", resourceType,
+                BLOCKED_RESOURCE_TYPES_PROPERTY, KNOWN_RESOURCE_TYPES);
+    }
+
+    /**
+     * Reports that {@code document} was dropped from the configured resource types.
+     *
+     * <p>Dropped rather than honoured because it is the page being crawled, not a resource on it:
+     * blocking it aborts the navigation itself, so every single URL fails - as {@code net::ERR_FAILED}
+     * on Chromium, {@code NS_ERROR_FAILURE} on Firefox and {@code Blocked by Web Inspector} on WebKit -
+     * with nothing in the resulting access error pointing back at this setting. There is no crawl for
+     * which honouring it would do something useful.</p>
+     *
+     * <p>A method of its own so it can be observed without capturing the log.</p>
+     */
+    protected void warnDocumentResourceTypeIgnored() {
+        logger.warn("Ignoring the '{}' resource type in {}: it is the crawled page itself, so blocking it would fail every URL.",
+                DOCUMENT_RESOURCE_TYPE, BLOCKED_RESOURCE_TYPES_PROPERTY);
     }
 
     /**
