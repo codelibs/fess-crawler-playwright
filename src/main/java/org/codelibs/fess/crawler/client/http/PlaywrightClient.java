@@ -1560,10 +1560,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The charset declaration the downstream HTML transformer looks for in the bytes this client
-     * emits. Deliberately the same pattern that transformer uses, semicolon and all - which is why the
-     * HTML5 {@code <meta charset="...">} short form never matches it.
+     * emits. Deliberately the same pattern that transformer uses: the semicolon is required, which is
+     * why the HTML5 {@code <meta charset="...">} short form never matches it, and the declaration has
+     * to sit inside a {@code <meta} tag, which is why {@code ; charset=} occurring in body text does
+     * not count as one. The negated character class stops at the tag it started in without requiring a
+     * closing {@code >}, so a tag the scan window cut in half is still recognized - on both sides.
      */
-    private static final Pattern CONTENT_CHARSET_PATTERN = Pattern.compile("; *charset *= *([a-zA-Z0-9\\-_]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONTENT_CHARSET_PATTERN =
+            Pattern.compile("<meta\\s[^<>]*; *charset *= *([a-zA-Z0-9\\-_]+)", Pattern.CASE_INSENSITIVE);
 
     /**
      * How many leading bytes that transformer reads while looking for the declaration. Mirrors the
@@ -1583,9 +1587,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * header writes the bytes one way and has them read another - and the whole document decodes to
      * mojibake. That overwrite cannot be prevented from here, so the only way to stay consistent is to
      * reach the same answer it will: this runs the transformer's own rule over the bytes about to be
-     * emitted. That rule is a loose one - it is not anchored to a meta tag, so body text can match it -
-     * but a declaration it misreads is misread identically on both sides, and the bytes still
-     * round-trip.</p>
+     * emitted. That rule is a heuristic over unparsed bytes rather than real HTML parsing, so it can
+     * still read a declaration a browser would not - but a declaration it misreads is misread
+     * identically on both sides, and the bytes still round-trip.</p>
      *
      * <p>A charset the document declares may not be able to represent every character the page renders,
      * an emoji in a Shift_JIS page for instance, and those characters become {@code ?}. That is a
