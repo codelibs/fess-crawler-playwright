@@ -247,7 +247,7 @@ Tests use a local Jetty server (`CrawlerWebServer`) with test content in `src/te
 | Property | Default | Description |
 |----------|---------|-------------|
 | `browserName` | `chromium` | Browser type: chromium, firefox, webkit |
-| `sharedClient` | `false` | Enable shared Playwright worker |
+| `sharedClient` | `false` | Enable shared Playwright worker. The first client to initialize creates it, and every client that joins later browses with **that** client's settings: `userAgent`, `requestHeaders`, proxy, TLS, authentication, `navigationTimeout`, `blockedResourceTypes` and the browser itself all come from it, and a joining client's own values are logged as not applied. Leave it off unless every crawl using it wants one shared browser configuration |
 | `downloadTimeout` | `15` | Download timeout in seconds |
 | `closeTimeout` | `15` | Resource cleanup timeout in seconds, for the whole teardown |
 | `renderedState` | `NETWORKIDLE` | When to extract content: LOAD, DOMCONTENTLOADED, NETWORKIDLE |
