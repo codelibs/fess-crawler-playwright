@@ -24,6 +24,8 @@ import java.util.HashMap;
 import java.util.Optional;
 
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
+import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.core.io.ResourceUtil;
@@ -251,8 +253,14 @@ public class PlaywrightClientProxyTest extends PlainTestCase {
             initParamMap.put(HcHttpClient.PROXY_PORT_PROPERTY, proxyPort);
         }
 
+        /** Feeds the parameter map the shape a Fess crawl config produces. */
         void setProxyCredentials(final UsernamePasswordCredentials credentials) {
-            initParamMap.put(HcHttpClient.PROXY_CREDENTIALS_PROPERTY, credentials);
+            final CredentialsConfig credentialsConfig = new CredentialsConfig();
+            credentialsConfig.setUsername(credentials.getUserName());
+            credentialsConfig.setPassword(new String(credentials.getPassword()));
+            final WebAuthenticationConfig config = new WebAuthenticationConfig();
+            config.setCredentials(credentialsConfig);
+            initParamMap.put(HcHttpClient.PROXY_CREDENTIALS_PROPERTY, config);
         }
 
         void setProxyBypass(final String proxyBypass) {
