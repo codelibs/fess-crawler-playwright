@@ -224,8 +224,10 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
         // The semicolon is required, so the HTML5 short form is invisible downstream.
         assertNull(transformer.parse("<meta charset=\"Shift_JIS\">"));
         assertEquals("Shift_JIS", transformer.parse(SHIFT_JIS_META));
-        // The pattern is not anchored to a meta tag, so body text counts as a declaration too.
-        assertEquals("Shift_JIS", transformer.parse("<p>Content-Type: text/html; charset=Shift_JIS</p>"));
+        // The declaration has to sit inside a meta tag, so body text does not count as one.
+        assertNull(transformer.parse("<p>Content-Type: text/html; charset=Shift_JIS</p>"));
+        // A meta tag the scan window cut in half still declares a charset, on both sides of the rule.
+        assertEquals("Shift_JIS", transformer.parse(SHIFT_JIS_META.substring(0, SHIFT_JIS_META.length() - 1)));
     }
 
     /**
@@ -235,7 +237,7 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
     @Test
     public void test_encodeContent_declarationOutsideWindow() {
         final PlaywrightClient client = new PlaywrightClient();
-        final String content = "<html><body>" + "x".repeat(3000) + "<span>; charset=Shift_JIS</span><p>" + JAPANESE + "</p></body></html>";
+        final String content = "<html><body>" + "x".repeat(3000) + SHIFT_JIS_META + "<p>" + JAPANESE + "</p></body></html>";
 
         final Pair<byte[], String> encoded = client.encodeContent(content);
 
@@ -251,12 +253,27 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
     @Test
     public void test_encodeContent_declarationInsideWindow() {
         final PlaywrightClient client = new PlaywrightClient();
-        final String content = "<html><body>" + "x".repeat(1000) + "<span>; charset=Shift_JIS</span><p>" + JAPANESE + "</p></body></html>";
+        final String content = "<html><body>" + "x".repeat(1000) + SHIFT_JIS_META + "<p>" + JAPANESE + "</p></body></html>";
 
         final Pair<byte[], String> encoded = client.encodeContent(content);
 
         assertEquals("Shift_JIS", encoded.getSecond());
         assertEquals(JAPANESE, paragraphOf(new String(encoded.getFirst(), Charset.forName("Shift_JIS"))));
+        assertDownstreamAgrees(encoded);
+    }
+
+    /**
+     * A declaration in body text is not a declaration. The transformer downstream reads only the ones
+     * inside a meta tag, so encoding with this one would write bytes it goes on to read as UTF-8.
+     */
+    @Test
+    public void test_encodeContent_declarationInBodyText() {
+        final PlaywrightClient client = new PlaywrightClient();
+        final String content = "<html><body><p>Content-Type: text/html; charset=Shift_JIS</p><p>" + JAPANESE + "</p></body></html>";
+
+        final Pair<byte[], String> encoded = client.encodeContent(content);
+
+        assertEquals("UTF-8", encoded.getSecond());
         assertDownstreamAgrees(encoded);
     }
 
