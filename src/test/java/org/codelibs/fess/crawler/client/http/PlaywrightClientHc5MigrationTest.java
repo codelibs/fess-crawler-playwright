@@ -29,6 +29,9 @@ import org.apache.hc.client5.http.auth.AuthScope;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.hc.client5.http.impl.auth.BasicScheme;
 import org.codelibs.fess.crawler.client.http.Hc5Authentication;
+import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig.AuthSchemeType;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.dbflute.utflute.core.PlainTestCase;
@@ -92,17 +95,21 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
     }
 
     /**
-     * Test that PlaywrightClient correctly handles Hc5Authentication array.
+     * Test that PlaywrightClient initializes with the authentications a crawl config configures.
      */
     @Test
-    public void test_playwrightClient_hc5AuthenticationConfiguration() {
+    public void test_playwrightClient_authenticationConfiguration() {
         final PlaywrightClientWithTestableAuth playwrightClient = new PlaywrightClientWithTestableAuth();
 
         try {
-            final Hc5Authentication[] authentications = new Hc5Authentication[] { new Hc5Authentication(new AuthScope(null, -1),
-                    new UsernamePasswordCredentials("user1", "pass1".toCharArray()), new BasicScheme()) };
+            final WebAuthenticationConfig config = new WebAuthenticationConfig();
+            config.setAuthSchemeType(AuthSchemeType.BASIC);
+            final CredentialsConfig credentials = new CredentialsConfig();
+            credentials.setUsername("user1");
+            credentials.setPassword("pass1");
+            config.setCredentials(credentials);
 
-            playwrightClient.setAuthentications(authentications);
+            playwrightClient.setAuthentications(new WebAuthenticationConfig[] { config });
             playwrightClient.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(headless));
             playwrightClient.init();
 
@@ -277,7 +284,7 @@ public class PlaywrightClientHc5MigrationTest extends PlainTestCase {
             initParamMap = new HashMap<>();
         }
 
-        void setAuthentications(final Hc5Authentication[] authentications) {
+        void setAuthentications(final WebAuthenticationConfig[] authentications) {
             initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authentications);
         }
 

@@ -45,7 +45,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import java.time.Instant;
 
 import org.apache.logging.log4j.LogManager;
@@ -61,6 +60,7 @@ import org.codelibs.fess.crawler.CrawlerContext;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
 import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
 import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig.AuthSchemeType;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
@@ -1798,6 +1798,34 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
+     * Reads the authentications configured for this crawl from the init parameters.
+     *
+     * <p>{@link WebAuthenticationConfig} is the shape this parameter is configured in: a crawl config
+     * always hands over a {@code WebAuthenticationConfig[]}, a zero-length one when nothing is
+     * configured.</p>
+     *
+     * <p>The value is matched with {@code instanceof} rather than read through
+     * {@code getInitParameter}, which casts unchecked: reading the parameter as one fixed array type
+     * threw {@link ClassCastException} on the array type itself - before any length check could run -
+     * and that took down every crawl started from a crawl config, whether or not any authentication was
+     * configured.</p>
+     *
+     * @return The configured authentications, empty when none are configured or the value has a shape
+     *         this client does not understand.
+     */
+    protected WebAuthenticationConfig[] resolveAuthentications() {
+        final Object configured = initParamMap != null ? initParamMap.get(HcHttpClient.AUTHENTICATIONS_PROPERTY) : null;
+        if (configured == null) {
+            return new WebAuthenticationConfig[0];
+        }
+        if (configured instanceof final WebAuthenticationConfig[] configs) {
+            return configs;
+        }
+        logger.warn("Unsupported authentication configuration: type={}", configured.getClass().getName());
+        return new WebAuthenticationConfig[0];
+    }
+
+    /**
      * Creates an authenticated Playwright context, by using Fess's built-in Hc5HttpClient to do authentication,
      * then passes its cookies to Playwright.
      *
@@ -1806,8 +1834,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return The browser context.
      */
     protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
-        final Hc5Authentication[] authentications =
-                getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Hc5Authentication[0], Hc5Authentication[].class);
+        final WebAuthenticationConfig[] authentications = resolveAuthentications();
 
         if (logger.isDebugEnabled()) {
             logger.debug("Processing {} authentication configuration(s)", authentications.length);
@@ -1820,18 +1847,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return browser.newContext(newContextOptions);
         }
 
-        for (final Hc5Authentication authentication : authentications) {
+        for (final WebAuthenticationConfig authentication : authentications) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Processing authentication scheme: {}", authentication.getAuthScheme().getName());
+                logger.debug("Processing authentication scheme: {}", authentication.getAuthSchemeType());
             }
-            if (!Strings.CS.equals(authentication.getAuthScheme().getName(), "form")) {
-                // Use the first non-form auth credentials to fill the browser's credential prompt
+            // Form authentication is carried into the browser as cookies below, not as a credential
+            // prompt, so the prompt is filled from the first other authentication that has credentials.
+            if (authentication.getAuthSchemeType() != AuthSchemeType.FORM) {
+                final CredentialsConfig credentials = authentication.getCredentials();
+                if (credentials == null || StringUtil.isEmpty(credentials.getUsername())) {
+                    continue;
+                }
                 if (logger.isDebugEnabled()) {
                     logger.debug("Setting HTTP credentials for non-form authentication");
                 }
-                final String username = authentication.getCredentials().getUserPrincipal().getName();
-                final String password = new String(authentication.getCredentials().getPassword());
-                newContextOptions.setHttpCredentials(username, password);
+                newContextOptions.setHttpCredentials(credentials.getUsername(),
+                        credentials.getPassword() != null ? credentials.getPassword() : StringUtil.EMPTY);
                 break;
             }
         }
