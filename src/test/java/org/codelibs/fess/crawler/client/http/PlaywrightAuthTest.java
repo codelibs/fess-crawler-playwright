@@ -25,18 +25,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.apache.hc.client5.http.auth.AuthScope;
-import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
-import org.apache.hc.client5.http.impl.auth.BasicScheme;
-import org.apache.hc.client5.http.impl.auth.DigestScheme;
 import org.codelibs.core.exception.UnsupportedEncodingRuntimeException;
 import org.codelibs.core.io.InputStreamUtil;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
-import org.codelibs.fess.crawler.client.http.form.Hc5FormScheme;
 import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
 import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
 import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig.AuthSchemeType;
-import org.codelibs.fess.crawler.client.http.Hc5Authentication;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
@@ -77,10 +71,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.BASIC);
         this.authServer.start();
 
-        final var basicAuthConfig =
-                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
-        basicAuthConfig.setAuthScheme(new BasicScheme());
-        this.playwrightClient.addAuthentication(basicAuthConfig);
+        this.playwrightClient.addAuthentication(createAuthentication(AuthSchemeType.BASIC, null));
 
         final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
@@ -95,10 +86,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.DIGEST);
         this.authServer.start();
 
-        final var digestAuthConfig =
-                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
-        digestAuthConfig.setAuthScheme(new DigestScheme());
-        this.playwrightClient.addAuthentication(digestAuthConfig);
+        this.playwrightClient.addAuthentication(createAuthentication(AuthSchemeType.DIGEST, null));
 
         final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
@@ -113,15 +101,11 @@ public class PlaywrightAuthTest extends PlainTestCase {
         this.authServer.setAuthMethod(AuthMethod.FORM);
         this.authServer.start();
 
-        final var formAuthConfig =
-                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
         final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
                 "http://[::1]:7030/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
                 "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7030/j_security_check", "login_parameters",
                 "j_username=${username}&j_password=${password}");
-        final var formScheme = new Hc5FormScheme(formSchemeConfiguration);
-        formAuthConfig.setAuthScheme(formScheme);
-        this.playwrightClient.addAuthentication(formAuthConfig);
+        this.playwrightClient.addAuthentication(createAuthentication(AuthSchemeType.FORM, formSchemeConfiguration));
 
         final String url = "http://[::1]:7030/";
         final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
@@ -129,49 +113,8 @@ public class PlaywrightAuthTest extends PlainTestCase {
         assertAuthSuccessful(response);
     }
 
-    /**
-     * Basic authentication as a Fess crawl config expresses it. Unlike the tests above, this feeds the
-     * parameter map the shape a crawl config actually produces, so it covers both reading
-     * WebAuthenticationConfig[] and handling an authentication that carries no scheme instance.
-     */
-    @Test
-    public void test_crawler_basicAuth_fromCrawlConfig() {
-        // prepare server
-        this.authServer.addUser("user", "password");
-        this.authServer.setAuthMethod(AuthMethod.BASIC);
-        this.authServer.start();
-
-        this.playwrightClient.addAuthenticationConfig(createCrawlConfigAuth(AuthSchemeType.BASIC, null));
-
-        final String url = "http://[::1]:7030/";
-        final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
-
-        assertAuthSuccessful(response);
-    }
-
-    /**
-     * Form authentication as a Fess crawl config expresses it.
-     */
-    @Test
-    public void test_crawler_formAuth_fromCrawlConfig() {
-        // prepare server
-        this.authServer.addUser("user", "password");
-        this.authServer.setAuthMethod(AuthMethod.FORM);
-        this.authServer.start();
-
-        final Map<String, String> formSchemeConfiguration = Map.of("encoding", "utf-8", "token_method", "GET", "token_url",
-                "http://[::1]:7030/login", "token_pattern", "name=\"authenticity_token\" +value=\"([^\"]+)\"", "token_name",
-                "authenticity_token", "login_method", "POST", "login_url", "http://[::1]:7030/j_security_check", "login_parameters",
-                "j_username=${username}&j_password=${password}");
-        this.playwrightClient.addAuthenticationConfig(createCrawlConfigAuth(AuthSchemeType.FORM, formSchemeConfiguration));
-
-        final String url = "http://[::1]:7030/";
-        final ResponseData response = this.playwrightClient.execute(makeRequestData(url));
-
-        assertAuthSuccessful(response);
-    }
-
-    private static WebAuthenticationConfig createCrawlConfigAuth(final AuthSchemeType authSchemeType,
+    /** Builds an authentication the way a Fess crawl config expresses it. */
+    private static WebAuthenticationConfig createAuthentication(final AuthSchemeType authSchemeType,
             final Map<String, String> formParameters) {
         final WebAuthenticationConfig config = new WebAuthenticationConfig();
         config.setAuthSchemeType(authSchemeType);
@@ -208,9 +151,7 @@ public class PlaywrightAuthTest extends PlainTestCase {
     }
 
     private static class PlaywrightClientWithAuthSettings extends PlaywrightClient {
-        private final List<Hc5Authentication> authConfigs = new ArrayList<>();
-
-        private final List<WebAuthenticationConfig> crawlConfigAuthConfigs = new ArrayList<>();
+        private final List<WebAuthenticationConfig> authConfigs = new ArrayList<>();
 
         PlaywrightClientWithAuthSettings() {
             initParamMap = new HashMap<>();
@@ -221,15 +162,10 @@ public class PlaywrightAuthTest extends PlainTestCase {
             return Optional.of(new MimeTypeHelperImpl());
         }
 
-        private void addAuthentication(final Hc5Authentication authentication) {
-            this.authConfigs.add(authentication);
-            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authConfigs.toArray(Hc5Authentication[]::new));
-        }
-
         /** Feeds the parameter map the shape a Fess crawl config produces. */
-        private void addAuthenticationConfig(final WebAuthenticationConfig config) {
-            this.crawlConfigAuthConfigs.add(config);
-            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, crawlConfigAuthConfigs.toArray(WebAuthenticationConfig[]::new));
+        private void addAuthentication(final WebAuthenticationConfig config) {
+            this.authConfigs.add(config);
+            initParamMap.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, authConfigs.toArray(WebAuthenticationConfig[]::new));
         }
     }
 }

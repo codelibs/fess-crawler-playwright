@@ -19,13 +19,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.hc.client5.http.auth.AuthScope;
-import org.apache.hc.client5.http.auth.NTCredentials;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
-import org.apache.hc.client5.http.impl.auth.BasicScheme;
 import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
 import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
 import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig.AuthSchemeType;
-import org.codelibs.fess.crawler.client.http.form.Hc5FormScheme;
 import org.dbflute.utflute.core.PlainTestCase;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +31,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The shape that matters here is the one a crawl config produces: {@code WebAuthenticationConfig[]},
  * and a zero-length array of that type when no authentication is configured at all. Reading that as
- * {@code Hc5Authentication[]} throws {@link ClassCastException} on the array type itself, which took
+ * {@code Hc5Authentication[]} threw {@link ClassCastException} on the array type itself, which took
  * down every Playwright crawl regardless of whether authentication was in use. These tests pin that
  * shape, which the browser-driven tests never exercised because they build the init parameter map
  * themselves.</p>
@@ -91,8 +88,8 @@ public class PlaywrightClientAuthResolutionTest extends PlainTestCase {
     }
 
     /**
-     * An NTLM authentication keeps the user name as configured. Converting it through
-     * {@code NTCredentials} instead would report it in the domain-qualified form that class builds.
+     * An NTLM authentication reaches the browser's credential prompt with the user name as configured,
+     * rather than the domain-qualified form an HC5 {@code NTCredentials} would report.
      */
     @Test
     public void test_resolveAuthentications_ntlmConfigKeepsPlainUsername() {
@@ -104,54 +101,6 @@ public class PlaywrightClientAuthResolutionTest extends PlainTestCase {
         assertEquals(1, authentications.length);
         assertEquals("user", authentications[0].getCredentials().getUsername());
         assertEquals("MYDOMAIN", authentications[0].getCredentials().getDomain());
-    }
-
-    /**
-     * A hand-wired client may still pass the HC5 shape, which is mapped onto the configured one.
-     */
-    @Test
-    public void test_resolveAuthentications_hc5AuthenticationArray() {
-        final Hc5Authentication basic =
-                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
-        basic.setAuthScheme(new BasicScheme());
-
-        final WebAuthenticationConfig[] authentications = createClient(new Hc5Authentication[] { basic }).resolveAuthentications();
-
-        assertEquals(1, authentications.length);
-        // Anything that is not form authentication answers a credential prompt.
-        assertFalse(AuthSchemeType.FORM.equals(authentications[0].getAuthSchemeType()));
-        assertEquals("user", authentications[0].getCredentials().getUsername());
-        assertEquals("password", authentications[0].getCredentials().getPassword());
-    }
-
-    /**
-     * Form authentication passed in the HC5 shape must stay recognizable as form authentication, so the
-     * browser is not handed a credential prompt for it.
-     */
-    @Test
-    public void test_resolveAuthentications_hc5FormAuthentication() {
-        final Hc5Authentication form =
-                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
-        form.setAuthScheme(new Hc5FormScheme(Map.of("encoding", "utf-8")));
-
-        final WebAuthenticationConfig[] authentications = createClient(new Hc5Authentication[] { form }).resolveAuthentications();
-
-        assertEquals(1, authentications.length);
-        assertEquals(AuthSchemeType.FORM, authentications[0].getAuthSchemeType());
-    }
-
-    /**
-     * An HC5 authentication carrying NTLM credentials still yields a user name, whatever its form.
-     */
-    @Test
-    public void test_resolveAuthentications_hc5NtlmAuthentication() {
-        final Hc5Authentication ntlm = new Hc5Authentication(new AuthScope(null, -1),
-                new NTCredentials("user", "password".toCharArray(), "WORKSTATION", "MYDOMAIN"));
-
-        final WebAuthenticationConfig[] authentications = createClient(new Hc5Authentication[] { ntlm }).resolveAuthentications();
-
-        assertEquals(1, authentications.length);
-        assertEquals("MYDOMAIN\\user", authentications[0].getCredentials().getUsername());
     }
 
     /**
@@ -168,10 +117,17 @@ public class PlaywrightClientAuthResolutionTest extends PlainTestCase {
 
     /**
      * A shape this client does not understand is reported and skipped, never cast. Casting is what
-     * turned a mismatch into a crawl-wide failure in the first place.
+     * turned a mismatch into a crawl-wide failure in the first place. The HC5-specific
+     * {@code Hc5Authentication[]} is one of those shapes: no crawl config produces it, and the
+     * authentication it describes is still carried out by {@link Hc5HttpClient}, which reads the same
+     * parameter itself.
      */
     @Test
     public void test_resolveAuthentications_unsupportedShape() {
+        final Hc5Authentication hc5Authentication =
+                new Hc5Authentication(new AuthScope(null, -1), new UsernamePasswordCredentials("user", "password".toCharArray()));
+
+        assertEquals(0, createClient(new Hc5Authentication[] { hc5Authentication }).resolveAuthentications().length);
         assertEquals(0, createClient("not an authentication array").resolveAuthentications().length);
         assertEquals(0, createClient(new String[] { "still not one" }).resolveAuthentications().length);
     }
