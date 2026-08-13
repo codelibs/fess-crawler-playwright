@@ -48,7 +48,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import java.time.Instant;
 
-import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.core.io.CloseableUtil;
@@ -60,6 +59,8 @@ import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.CrawlerContext;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
+import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
@@ -1727,8 +1728,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         // append existing proxy configuration
         final String proxyHost = getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class);
         final Integer proxyPort = getInitParameter(HcHttpClient.PROXY_PORT_PROPERTY, null, Integer.class);
-        final UsernamePasswordCredentials proxyCredentials =
-                getInitParameter(HcHttpClient.PROXY_CREDENTIALS_PROPERTY, null, UsernamePasswordCredentials.class);
+        final CredentialsConfig proxyCredentials = resolveProxyCredentials();
         final String proxyBypass = getInitParameter(PROXY_BYPASS_PROPERTY, null, String.class);
 
         if (!StringUtils.isBlank(proxyHost)) {
@@ -1738,9 +1738,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             }
             final String proxyAddress = proxyPort == null ? proxyHost : proxyHost + ":" + proxyPort;
             final Proxy proxy = new Proxy(proxyAddress);
-            if (proxyCredentials != null) {
-                proxy.setUsername(proxyCredentials.getUserName());
-                proxy.setPassword(new String(proxyCredentials.getPassword()));
+            if (proxyCredentials != null && StringUtil.isNotEmpty(proxyCredentials.getUsername())) {
+                proxy.setUsername(proxyCredentials.getUsername());
+                proxy.setPassword(proxyCredentials.getPassword() != null ? proxyCredentials.getPassword() : StringUtil.EMPTY);
             }
             proxy.setBypass(proxyBypass);
             options.setProxy(proxy);
@@ -1751,6 +1751,30 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         }
 
         return options;
+    }
+
+    /**
+     * Reads the credentials to authenticate with the configured proxy from the init parameters.
+     *
+     * <p>{@link WebAuthenticationConfig} is the shape a crawl config configures this in. The value is
+     * matched with {@code instanceof} rather than read through {@code getInitParameter}, which casts
+     * unchecked: a value of a shape the cast does not name threw {@link ClassCastException} while the
+     * browser context was being created, which failed the crawl rather than the proxy
+     * authentication.</p>
+     *
+     * @return The proxy credentials, or null when none are configured or the value has a shape this
+     *         client does not understand.
+     */
+    protected CredentialsConfig resolveProxyCredentials() {
+        final Object configured = initParamMap != null ? initParamMap.get(HcHttpClient.PROXY_CREDENTIALS_PROPERTY) : null;
+        if (configured == null) {
+            return null;
+        }
+        if (configured instanceof final WebAuthenticationConfig config) {
+            return config.getCredentials();
+        }
+        logger.warn("Unsupported proxy credentials configuration: type={}", configured.getClass().getName());
+        return null;
     }
 
     /**
