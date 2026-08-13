@@ -24,6 +24,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -48,6 +49,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import java.time.Instant;
 
+import org.apache.hc.client5.http.auth.AuthScheme;
+import org.apache.hc.client5.http.auth.Credentials;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -60,6 +63,9 @@ import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.crawler.Constants;
 import org.codelibs.fess.crawler.CrawlerContext;
 import org.codelibs.fess.crawler.client.AbstractCrawlerClient;
+import org.codelibs.fess.crawler.client.http.config.CredentialsConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig.AuthSchemeType;
 import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
@@ -262,6 +268,12 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * is not tied to one browser's exact wording.
      */
     protected static final String NAVIGATION_ABORTED_MARKER = "net::ERR_ABORTED";
+
+    /**
+     * The name {@code Hc5FormScheme} reports, used to tell form authentication apart from the schemes
+     * that are answered with a credential prompt.
+     */
+    protected static final String FORM_AUTH_SCHEME_NAME = "form";
 
     /**
      * The maximum number of {@code getCause()} hops {@link #isDownloadNavigationFailure(Throwable)}
@@ -1774,6 +1786,70 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
+     * Reads the authentications configured for this crawl from the init parameters.
+     *
+     * <p>{@link WebAuthenticationConfig} is the library-independent shape this parameter is configured
+     * in: a crawl config always hands over a {@code WebAuthenticationConfig[]}, a zero-length one when
+     * nothing is configured. A hand-wired client may still pass the HC5-specific
+     * {@code Hc5Authentication[]}, so that is accepted too and mapped onto the same shape.</p>
+     *
+     * <p>The value is matched with {@code instanceof} rather than read through
+     * {@code getInitParameter}, which casts unchecked: reading the parameter as one fixed array type
+     * threw {@link ClassCastException} on the array type itself - before any length check could run -
+     * and that took down every crawl started from a crawl config, whether or not any authentication was
+     * configured.</p>
+     *
+     * @return The configured authentications, empty when none are configured or the value has a shape
+     *         this client does not understand.
+     */
+    protected WebAuthenticationConfig[] resolveAuthentications() {
+        final Object configured = initParamMap != null ? initParamMap.get(HcHttpClient.AUTHENTICATIONS_PROPERTY) : null;
+        if (configured == null) {
+            return new WebAuthenticationConfig[0];
+        }
+        if (configured instanceof final WebAuthenticationConfig[] configs) {
+            return configs;
+        }
+        if (configured instanceof final Hc5Authentication[] authentications) {
+            return toAuthenticationConfigs(authentications);
+        }
+        logger.warn("Unsupported authentication configuration: type={}", configured.getClass().getName());
+        return new WebAuthenticationConfig[0];
+    }
+
+    /**
+     * Maps the HC5-specific authentications a hand-wired client may pass onto the configuration shape.
+     *
+     * <p>Only what the browser's credential prompt needs is carried over - whether the authentication
+     * is form-based, and the user name and password - because that is all
+     * {@link #createAuthenticatedContext(Browser, NewContextOptions)} reads. The authentication itself
+     * is still performed by {@link Hc5HttpClient} from the untouched init parameters.</p>
+     *
+     * @param authentications The HC5 authentications.
+     * @return The same authentications in configuration shape.
+     */
+    protected WebAuthenticationConfig[] toAuthenticationConfigs(final Hc5Authentication[] authentications) {
+        final List<WebAuthenticationConfig> configs = new ArrayList<>(authentications.length);
+        for (final Hc5Authentication authentication : authentications) {
+            final WebAuthenticationConfig config = new WebAuthenticationConfig();
+            final AuthScheme authScheme = authentication.getAuthScheme();
+            if (authScheme != null && Strings.CS.equals(authScheme.getName(), FORM_AUTH_SCHEME_NAME)) {
+                config.setAuthSchemeType(AuthSchemeType.FORM);
+            }
+            final Credentials credentials = authentication.getCredentials();
+            if (credentials != null && credentials.getUserPrincipal() != null) {
+                final CredentialsConfig credentialsConfig = new CredentialsConfig();
+                credentialsConfig.setUsername(credentials.getUserPrincipal().getName());
+                final char[] password = credentials.getPassword();
+                credentialsConfig.setPassword(password != null ? new String(password) : null);
+                config.setCredentials(credentialsConfig);
+            }
+            configs.add(config);
+        }
+        return configs.toArray(new WebAuthenticationConfig[configs.size()]);
+    }
+
+    /**
      * Creates an authenticated Playwright context, by using Fess's built-in Hc5HttpClient to do authentication,
      * then passes its cookies to Playwright.
      *
@@ -1782,8 +1858,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      * @return The browser context.
      */
     protected BrowserContext createAuthenticatedContext(final Browser browser, final NewContextOptions newContextOptions) {
-        final Hc5Authentication[] authentications =
-                getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Hc5Authentication[0], Hc5Authentication[].class);
+        final WebAuthenticationConfig[] authentications = resolveAuthentications();
 
         if (logger.isDebugEnabled()) {
             logger.debug("Processing {} authentication configuration(s)", authentications.length);
@@ -1796,18 +1871,22 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return browser.newContext(newContextOptions);
         }
 
-        for (final Hc5Authentication authentication : authentications) {
+        for (final WebAuthenticationConfig authentication : authentications) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Processing authentication scheme: {}", authentication.getAuthScheme().getName());
+                logger.debug("Processing authentication scheme: {}", authentication.getAuthSchemeType());
             }
-            if (!Strings.CS.equals(authentication.getAuthScheme().getName(), "form")) {
-                // Use the first non-form auth credentials to fill the browser's credential prompt
+            // Form authentication is carried into the browser as cookies below, not as a credential
+            // prompt, so the prompt is filled from the first other authentication that has credentials.
+            if (authentication.getAuthSchemeType() != AuthSchemeType.FORM) {
+                final CredentialsConfig credentials = authentication.getCredentials();
+                if (credentials == null || StringUtil.isEmpty(credentials.getUsername())) {
+                    continue;
+                }
                 if (logger.isDebugEnabled()) {
                     logger.debug("Setting HTTP credentials for non-form authentication");
                 }
-                final String username = authentication.getCredentials().getUserPrincipal().getName();
-                final String password = new String(authentication.getCredentials().getPassword());
-                newContextOptions.setHttpCredentials(username, password);
+                newContextOptions.setHttpCredentials(credentials.getUsername(),
+                        credentials.getPassword() != null ? credentials.getPassword() : StringUtil.EMPTY);
                 break;
             }
         }
