@@ -15,7 +15,9 @@
  */
 package org.codelibs.fess.crawler.client.http;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -62,6 +64,28 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
         client.setInitParameterMap(paramMap);
         client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
         client.setDownloadTimeout(5);
+        client.setCloseTimeout(10);
+        return client;
+    }
+
+    /**
+     * Records the settings a shared worker could not honour, so the test can observe the report
+     * without depending on log output.
+     */
+    private static class IgnoredSettingsRecordingClient extends PlaywrightClient {
+        final List<List<String>> reports = new ArrayList<>();
+
+        @Override
+        protected void warnSharedWorkerSettingsIgnored(final List<String> ignoredSettings) {
+            reports.add(ignoredSettings);
+        }
+    }
+
+    private static IgnoredSettingsRecordingClient newRecordingClient(final Map<String, Object> paramMap) {
+        final IgnoredSettingsRecordingClient client = new IgnoredSettingsRecordingClient();
+        client.setInitParameterMap(paramMap);
+        // Deliberately no launch options: this client only ever joins a worker another client created,
+        // and launchOptions is itself one of the settings a joining client cannot apply.
         client.setCloseTimeout(10);
         return client;
     }
@@ -178,6 +202,50 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
             first.close();
             second.close();
             server.stop();
+        }
+    }
+
+    /**
+     * A client that joins a worker another client already created must say which of its own settings
+     * that worker cannot honour.
+     *
+     * <p>The worker is built once, from the settings of whichever client initialized first, so a client
+     * that joins later crawls with that client's browser - its user agent above all. Without the report
+     * the only symptom is a site being visited under settings nobody configured for it.</p>
+     */
+    @Test
+    @Timeout(60)
+    public void test_sharedWorker_joiningClientReportsTheSettingsItCannotApply() throws Exception {
+        final Map<String, Object> creatorParams = new HashMap<>();
+        creatorParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
+        final PlaywrightClient creator = newClient(creatorParams);
+
+        final Map<String, Object> configuredParams = new HashMap<>();
+        configuredParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
+        configuredParams.put(HcHttpClient.USER_AGENT_PROPERTY, "Joining/1.0");
+        configuredParams.put(PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY, "image");
+        final IgnoredSettingsRecordingClient configured = newRecordingClient(configuredParams);
+
+        final Map<String, Object> unconfiguredParams = new HashMap<>();
+        unconfiguredParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
+        final IgnoredSettingsRecordingClient unconfigured = newRecordingClient(unconfiguredParams);
+
+        try {
+            creator.init();
+
+            configured.init();
+            assertEquals(1, configured.reports.size());
+            assertEquals(List.of(HcHttpClient.USER_AGENT_PROPERTY, PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY),
+                    configured.reports.get(0));
+
+            // A client that configured none of them has nothing to be told about: reporting anyway
+            // would make the warning noise that every shared crawl logs and nobody reads.
+            unconfigured.init();
+            assertTrue(unconfigured.reports.isEmpty());
+        } finally {
+            unconfigured.close();
+            configured.close();
+            creator.close();
         }
     }
 
