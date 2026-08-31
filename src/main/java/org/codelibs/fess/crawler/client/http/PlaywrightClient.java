@@ -24,6 +24,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -148,6 +149,37 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The key to specify a shared client.
+     *
+     * <p><b>The shared worker is created once, by whichever client initializes first, and every client
+     * that enables this afterwards is handed that same browser, context and page.</b> So every setting
+     * that is read while the worker is being created is taken from that first client, and the same
+     * setting on a client that joins later is not applied - {@link #init()} names them in a warning
+     * (see {@link #warnSharedWorkerSettingsIgnored(List)}) rather than leaving it invisible.</p>
+     *
+     * <p>Taken from the client that created the worker, and therefore in force for every client sharing
+     * it:</p>
+     * <ul>
+     *   <li>{@link #setBrowserName(String)}, {@link #setLaunchOptions(LaunchOptions)} and
+     *       {@link #setNewContextOptions(NewContextOptions)}</li>
+     *   <li>{@code userAgent} and {@code requestHeaders}, applied by
+     *       {@link #initNewContextOptions()} - so a joining client's crawl requests carry the first
+     *       client's user agent</li>
+     *   <li>{@link #IGNORE_HTTPS_ERRORS_PROPERTY} and {@code ignoreSslCertificate}</li>
+     *   <li>{@code proxyHost}, {@code proxyPort}, {@code proxyCredentials} and
+     *       {@link #PROXY_BYPASS_PROPERTY}</li>
+     *   <li>{@code webAuthentications}, applied by
+     *       {@link #createAuthenticatedContext(Browser, NewContextOptions)}</li>
+     *   <li>{@link #NAVIGATION_TIMEOUT_PROPERTY}, applied by {@link #applyTimeouts(Page)}</li>
+     *   <li>{@link #BLOCKED_RESOURCE_TYPES_PROPERTY}, applied by {@link #applyResourceBlocking(Page)}</li>
+     * </ul>
+     *
+     * <p>Still honoured per client, because {@link #execute(RequestData)} reads them on every request
+     * rather than when the worker is built: {@link #RENDERED_STATE},
+     * {@link #RENDERED_STATE_TIMEOUT_PROPERTY}, {@link #CONTENT_WAIT_DURATION},
+     * {@link #setDownloadTimeout(int)} and {@link #setCloseTimeout(int)}.</p>
+     *
+     * <p>Sharing is therefore only for clients that all want the same browser configuration. A client
+     * that needs its own must leave this off, which is the default.</p>
      */
     protected static final String SHARED_CLIENT = "sharedClient";
 
@@ -271,6 +303,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     private static final int MAX_CAUSE_DEPTH = 16;
 
     /**
+     * The browser used unless another one is selected through {@link #setBrowserName(String)}.
+     */
+    protected static final String DEFAULT_BROWSER_NAME = "chromium";
+
+    /**
      * A map of options for Playwright.
      */
     protected Map<String, String> options = new HashMap<>();
@@ -278,7 +315,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * The name of the browser to use (e.g., "chromium", "firefox", "webkit").
      */
-    protected String browserName = "chromium";
+    protected String browserName = DEFAULT_BROWSER_NAME;
 
     /**
      * The launch options for the browser.
@@ -418,6 +455,14 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                         logger.debug("Creating a shared Playwright worker...");
                     }
                     SHARED_WORKER = createPlaywrightWorker();
+                } else {
+                    // This client is not the one that built the worker, so nothing it configured for the
+                    // browser was read. Name those settings, or the crawl silently runs under the
+                    // settings of whichever client got here first.
+                    final List<String> ignoredSettings = getSharedWorkerIgnoredSettings();
+                    if (!ignoredSettings.isEmpty()) {
+                        warnSharedWorkerSettingsIgnored(ignoredSettings);
+                    }
                 }
                 final int refCount = SHARED_WORKER_REF_COUNT.incrementAndGet();
                 if (logger.isDebugEnabled()) {
@@ -449,6 +494,77 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 logger.debug("Playwright initialization completed successfully");
             }
         }
+    }
+
+    /**
+     * Collects the settings this client configured that a worker built by another client cannot honour.
+     *
+     * <p>Exactly the settings {@link #createPlaywrightWorker()} and the methods it calls read, which is
+     * what makes them belong to whichever client built the worker (see {@link #SHARED_CLIENT}). Settings
+     * left at their default are not reported: a client that configured none of them gets the browser it
+     * asked for, so telling it about the sharing would be noise on every shared crawl.</p>
+     *
+     * @return The names of those settings, in configuration order, empty if this client configured none.
+     */
+    protected List<String> getSharedWorkerIgnoredSettings() {
+        final List<String> ignoredSettings = new ArrayList<>();
+        if (!DEFAULT_BROWSER_NAME.equals(browserName)) {
+            ignoredSettings.add("browserName");
+        }
+        if (launchOptions != null) {
+            ignoredSettings.add("launchOptions");
+        }
+        if (newContextOptions != null) {
+            ignoredSettings.add("newContextOptions");
+        }
+        if (StringUtil.isNotBlank(getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class))) {
+            ignoredSettings.add(HcHttpClient.USER_AGENT_PROPERTY);
+        }
+        if (getInitParameter(HcHttpClient.REQUEST_HEADERS_PROPERTY, new RequestHeader[0], RequestHeader[].class).length > 0) {
+            ignoredSettings.add(HcHttpClient.REQUEST_HEADERS_PROPERTY);
+        }
+        if (getInitParameter(IGNORE_HTTPS_ERRORS_PROPERTY, false, Boolean.class)) {
+            ignoredSettings.add(IGNORE_HTTPS_ERRORS_PROPERTY);
+        }
+        if (getInitParameter(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY, false, Boolean.class)) {
+            ignoredSettings.add(HcHttpClient.IGNORE_SSL_CERTIFICATE_PROPERTY);
+        }
+        // The port, the credentials and the bypass list are only ever read together with the host, so
+        // the host alone stands for the whole proxy configuration here.
+        if (StringUtil.isNotBlank(getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class))) {
+            ignoredSettings.add(HcHttpClient.PROXY_HOST_PROPERTY);
+        }
+        if (getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Hc5Authentication[0], Hc5Authentication[].class).length > 0) {
+            ignoredSettings.add(HcHttpClient.AUTHENTICATIONS_PROPERTY);
+        }
+        // Same condition as applyTimeouts(Page): a value it would not have applied anyway is not
+        // something the sharing took away.
+        final Integer navigationTimeout = getInitParameter(NAVIGATION_TIMEOUT_PROPERTY, null, Integer.class);
+        if (navigationTimeout != null && navigationTimeout > 0) {
+            ignoredSettings.add(NAVIGATION_TIMEOUT_PROPERTY);
+        }
+        if (StringUtil.isNotBlank(getInitParameter(BLOCKED_RESOURCE_TYPES_PROPERTY, null, String.class))) {
+            ignoredSettings.add(BLOCKED_RESOURCE_TYPES_PROPERTY);
+        }
+        return ignoredSettings;
+    }
+
+    /**
+     * Reports the settings this client configured that the shared worker it joined cannot honour.
+     *
+     * <p>A warning rather than a failure: sharing a worker is opt-in and the crawl does run, it just
+     * runs under someone else's browser settings. Kept in its own method so that it can be observed
+     * without capturing log output.</p>
+     *
+     * @param ignoredSettings The names of those settings, never empty.
+     */
+    protected void warnSharedWorkerSettingsIgnored(final List<String> ignoredSettings) {
+        logger.warn(
+                "{} made this client reuse the Playwright worker that another client created first, so these settings are not applied: {}. "
+                        + "They are only read while a worker is being created, which means this crawl runs with the settings of the client "
+                        + "that created it - including its {}, so pages are requested under that client's user agent. Turn {} off for this "
+                        + "crawl if it has to use its own settings.",
+                SHARED_CLIENT, ignoredSettings, HcHttpClient.USER_AGENT_PROPERTY, SHARED_CLIENT);
     }
 
     /**
