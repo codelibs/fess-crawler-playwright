@@ -534,7 +534,11 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         if (StringUtil.isNotBlank(getInitParameter(HcHttpClient.PROXY_HOST_PROPERTY, null, String.class))) {
             ignoredSettings.add(HcHttpClient.PROXY_HOST_PROPERTY);
         }
-        if (getInitParameter(HcHttpClient.AUTHENTICATIONS_PROPERTY, new Hc5Authentication[0], Hc5Authentication[].class).length > 0) {
+        // Read through resolveAuthentications(), the same way createAuthenticatedContext() does. A crawl
+        // configuration always supplies this as WebAuthenticationConfig[] - even an empty one when no
+        // authentication is configured at all - so reading it as Hc5Authentication[] is an array cast
+        // that cannot succeed, and it throws before any client can join a worker.
+        if (resolveAuthentications().length > 0) {
             ignoredSettings.add(HcHttpClient.AUTHENTICATIONS_PROPERTY);
         }
         // Same condition as applyTimeouts(Page): a value it would not have applied anyway is not
