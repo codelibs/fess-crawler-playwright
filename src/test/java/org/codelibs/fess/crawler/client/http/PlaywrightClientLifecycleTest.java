@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
+import org.codelibs.fess.crawler.client.http.config.WebAuthenticationConfig;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
@@ -212,6 +213,11 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
      * <p>The worker is built once, from the settings of whichever client initialized first, so a client
      * that joins later crawls with that client's browser - its user agent above all. Without the report
      * the only symptom is a site being visited under settings nobody configured for it.</p>
+     *
+     * <p>The parameter maps here carry {@code webAuthentications} as the {@link WebAuthenticationConfig}
+     * array a crawl configuration supplies, including the empty one it supplies when no authentication is
+     * configured. Reading that as {@code Hc5Authentication[]} is an array cast that cannot succeed, and it
+     * would throw for <em>every</em> joining client - not only for one that configured authentication.</p>
      */
     @Test
     @Timeout(60)
@@ -220,14 +226,20 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
         creatorParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
         final PlaywrightClient creator = newClient(creatorParams);
 
+        final WebAuthenticationConfig authentication = new WebAuthenticationConfig();
+        authentication.setHost("localhost");
+
         final Map<String, Object> configuredParams = new HashMap<>();
         configuredParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
         configuredParams.put(HcHttpClient.USER_AGENT_PROPERTY, "Joining/1.0");
         configuredParams.put(PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY, "image");
+        configuredParams.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, new WebAuthenticationConfig[] { authentication });
         final IgnoredSettingsRecordingClient configured = newRecordingClient(configuredParams);
 
         final Map<String, Object> unconfiguredParams = new HashMap<>();
         unconfiguredParams.put(PlaywrightClient.SHARED_CLIENT, Boolean.TRUE);
+        // What a crawl configuration supplies when nothing is authenticated: still this type, length 0.
+        unconfiguredParams.put(HcHttpClient.AUTHENTICATIONS_PROPERTY, new WebAuthenticationConfig[0]);
         final IgnoredSettingsRecordingClient unconfigured = newRecordingClient(unconfiguredParams);
 
         try {
@@ -235,8 +247,8 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
 
             configured.init();
             assertEquals(1, configured.reports.size());
-            assertEquals(List.of(HcHttpClient.USER_AGENT_PROPERTY, PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY),
-                    configured.reports.get(0));
+            assertEquals(List.of(HcHttpClient.USER_AGENT_PROPERTY, HcHttpClient.AUTHENTICATIONS_PROPERTY,
+                    PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY), configured.reports.get(0));
 
             // A client that configured none of them has nothing to be told about: reporting anyway
             // would make the warning noise that every shared crawl logs and nobody reads.
