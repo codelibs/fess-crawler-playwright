@@ -85,8 +85,10 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
     private static IgnoredSettingsRecordingClient newRecordingClient(final Map<String, Object> paramMap) {
         final IgnoredSettingsRecordingClient client = new IgnoredSettingsRecordingClient();
         client.setInitParameterMap(paramMap);
-        // Deliberately no launch options: this client only ever joins a worker another client created,
-        // and launchOptions is itself one of the settings a joining client cannot apply.
+        // The DI definition that ships with the plugin sets launchOptions on every client it creates, so
+        // a joining client always has them. The report has to hold for that shape, not only for a bare
+        // client that a test happens to build without them.
+        client.setLaunchOptions(new BrowserType.LaunchOptions().setHeadless(HEADLESS));
         client.setCloseTimeout(10);
         return client;
     }
@@ -251,7 +253,9 @@ public class PlaywrightClientLifecycleTest extends PlainTestCase {
                     PlaywrightClient.BLOCKED_RESOURCE_TYPES_PROPERTY), configured.reports.get(0));
 
             // A client that configured none of them has nothing to be told about: reporting anyway
-            // would make the warning noise that every shared crawl logs and nobody reads.
+            // would make the warning noise that every shared crawl logs and nobody reads. launchOptions
+            // is not a crawl-configuration setting - it comes from DI, identical for every client - so
+            // it must not put this client into the report.
             unconfigured.init();
             assertTrue(unconfigured.reports.isEmpty());
         } finally {
