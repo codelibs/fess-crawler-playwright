@@ -499,24 +499,23 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Collects the settings this client configured that a worker built by another client cannot honour.
      *
-     * <p>Exactly the settings {@link #createPlaywrightWorker()} and the methods it calls read, which is
-     * what makes them belong to whichever client built the worker (see {@link #SHARED_CLIENT}). Settings
-     * left at their default are not reported: a client that configured none of them gets the browser it
-     * asked for, so telling it about the sharing would be noise on every shared crawl.</p>
+     * <p>The settings {@link #createPlaywrightWorker()} and the methods it calls read, which is what
+     * makes them belong to whichever client built the worker (see {@link #SHARED_CLIENT}). Settings left
+     * at their default are not reported: a client that configured none of them gets the browser it asked
+     * for, so telling it about the sharing would be noise on every shared crawl.</p>
+     *
+     * <p>Only settings a crawl configuration can supply, which means only what arrives through
+     * {@link #getInitParameter(String, Object, Class)}. {@code browserName}, {@code launchOptions} and
+     * {@code newContextOptions} reach a client through its setters, so every client in a container gets
+     * the same values from the same component definition - sharing a worker takes none of them away, and
+     * a crawl configuration could not have asked for anything else. Reporting them named a setting the
+     * operator never chose, and, because the shipped definition always sets {@code launchOptions}, it put
+     * that false entry at the head of the report of every joining client there is.</p>
      *
      * @return The names of those settings, in configuration order, empty if this client configured none.
      */
     protected List<String> getSharedWorkerIgnoredSettings() {
         final List<String> ignoredSettings = new ArrayList<>();
-        if (!DEFAULT_BROWSER_NAME.equals(browserName)) {
-            ignoredSettings.add("browserName");
-        }
-        if (launchOptions != null) {
-            ignoredSettings.add("launchOptions");
-        }
-        if (newContextOptions != null) {
-            ignoredSettings.add("newContextOptions");
-        }
         if (StringUtil.isNotBlank(getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class))) {
             ignoredSettings.add(HcHttpClient.USER_AGENT_PROPERTY);
         }
