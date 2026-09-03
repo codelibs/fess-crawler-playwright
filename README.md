@@ -15,6 +15,7 @@ A Playwright-based web crawler component for [Fess](https://fess.codelibs.org/) 
 - **SSL Flexibility**: Option to ignore SSL certificate validation for testing
 - **File Downloads**: Handles various content types including PDF, images, documents
 - **Resource Management**: Efficient browser context sharing and cleanup
+- **robots.txt**: `Disallow`, `Allow` and `Sitemap` directives are honoured, the same as the HTTP clients
 - **Configurable Rendering States**: Control when to extract content (load, DOMContentLoaded, networkidle)
 
 ## Technology Stack
@@ -286,6 +287,7 @@ as well:
 | `userAgent` | browser default | User agent to send. Without it the browser announces itself as HeadlessChrome |
 | `requestHeaders` | - | Extra request headers. Repeated names are joined into one comma-separated value |
 | `maxContentLength` | - | Maximum content length in bytes |
+| `robotsTxtEnabled` | `true` | Whether the site's `robots.txt` is honoured. Fetched once per host through the browser context, so it goes out over the same proxy, credentials, TLS settings and user agent as the crawl. `Disallow` and `Allow` become exclude and include patterns on the crawl's URL filter, and `Sitemap` lines are handed to the crawler. A site that does not answer for robots.txt is still crawled |
 
 `connectionTimeout` and `soTimeout` are deliberately **not** applied to the browser. Both bound a single
 socket operation, whereas a Playwright timeout bounds a whole browser operation - the values commonly

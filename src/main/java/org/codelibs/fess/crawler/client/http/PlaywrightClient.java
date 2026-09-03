@@ -66,14 +66,17 @@ import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.entity.RobotsTxt;
 import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
+import org.codelibs.fess.crawler.helper.RobotsTxtHelper;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 
+import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.Browser.NewContextOptions;
 import com.microsoft.playwright.BrowserContext;
@@ -1012,6 +1015,9 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             throw new CrawlerSystemException("PlaywrightClient has already been closed. URL: " + url);
         }
 
+        // Before the page is fetched, the same point in the request where the HTTP clients read it.
+        processRobotsTxt(url, currentWorker.getValue3());
+
         final Page page = currentWorker.getValue4();
         final AtomicReference<Response> responseRef = new AtomicReference<>();
         final AtomicReference<Download> downloadRef = new AtomicReference<>();
@@ -1624,6 +1630,161 @@ public class PlaywrightClient extends AbstractCrawlerClient {
      */
     protected Optional<MimeTypeHelper> getMimeTypeHelper() {
         return Optional.ofNullable(crawlerContainer.getComponent("mimeTypeHelper"));
+    }
+
+    /**
+     * Gets the RobotsTxtHelper.
+     *
+     * @return The RobotsTxtHelper, empty when the container has none registered.
+     */
+    protected Optional<RobotsTxtHelper> getRobotsTxtHelper() {
+        // A client built directly rather than through the container - the standalone use the README
+        // shows - has no container to ask. robots.txt is then not processed, which is a smaller loss
+        // than failing every page over it.
+        if (crawlerContainer == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(crawlerContainer.getComponent("robotsTxtHelper"));
+    }
+
+    /**
+     * Applies the site's robots.txt to this crawl, once per host.
+     *
+     * <p>Whether a crawl obeys robots.txt must not depend on which client a crawl configuration routed
+     * it to, and the HTTP clients read it in their own {@code processRobotsTxt}. This client is not one
+     * of them, so a configuration that adds {@code client.crawlerClients=playwright:...} would otherwise
+     * lose robots.txt for that site while every setting still said it was being honoured.</p>
+     *
+     * <p>Fetched through the browser context, so it goes out over the same proxy, credentials, TLS
+     * settings and user agent as the crawl itself - a separately built HTTP client would have had to
+     * repeat all of that to ask the same question.</p>
+     *
+     * <p>Failing to read robots.txt never fails the page: this is scoping for the crawl, and a site that
+     * does not answer for it still answers for its pages.</p>
+     *
+     * @param url The URL about to be crawled, used for its host.
+     * @param browserContext The context to fetch robots.txt with.
+     */
+    protected void processRobotsTxt(final String url, final BrowserContext browserContext) {
+        // First, because it is what the directives would be applied to: with no crawl context nothing is
+        // queueing URLs from this request, so there is nothing for robots.txt to scope.
+        final CrawlerContext crawlerContext = CrawlingParameterUtil.getCrawlerContext();
+        if (crawlerContext == null) {
+            return;
+        }
+        // Read the parameter instead of pushing it into the helper the way the HTTP clients do: the
+        // helper can be a container singleton, and switching it off for one crawl configuration must not
+        // switch it off for every client sharing it.
+        if (!getInitParameter(HcHttpClient.ROBOTS_TXT_ENABLED_PROPERTY, Boolean.TRUE, Boolean.class).booleanValue()) {
+            return;
+        }
+        final RobotsTxtHelper robotsTxtHelper = getRobotsTxtHelper().orElse(null);
+        if (robotsTxtHelper == null || !robotsTxtHelper.isEnabled()) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Not processing robots.txt for {}: no RobotsTxtHelper is available.", url);
+            }
+            return;
+        }
+
+        final int idx = url.indexOf('/', url.indexOf("://") + 3);
+        final String hostUrl = idx >= 0 ? url.substring(0, idx) : url;
+        final String robotsTxtUrl = hostUrl + "/robots.txt";
+        // add() reports whether this host is new, so one crawl fetches robots.txt once however many
+        // pages it visits. Checking and adding in one call also keeps two threads from both fetching it.
+        if (!crawlerContext.getRobotsTxtUrlSet().add(robotsTxtUrl)) {
+            return;
+        }
+
+        if (logger.isInfoEnabled()) {
+            logger.info("Checking URL: {}", robotsTxtUrl);
+        }
+        try {
+            final APIResponse response = browserContext.request().get(robotsTxtUrl);
+            try {
+                if (response.status() != 200) {
+                    return;
+                }
+                // Fetched from whatever host the crawl reached, so it gets the same declared-length
+                // bound as a page: nothing else keeps an oversized robots.txt out of memory.
+                checkDeclaredContentLength(response.headers(), robotsTxtUrl);
+                final RobotsTxt robotsTxt = robotsTxtHelper.parse(new ByteArrayInputStream(response.body()));
+                if (robotsTxt != null) {
+                    applyRobotsTxt(robotsTxt, hostUrl, crawlerContext);
+                }
+            } finally {
+                response.dispose();
+            }
+        } catch (final Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Could not process {}", robotsTxtUrl, e);
+            } else if (logger.isInfoEnabled()) {
+                logger.info("Could not process {}. {}", robotsTxtUrl, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Puts what robots.txt said into the crawl: the sitemaps it advertises, and the paths the matched
+     * directive opens or closes, as patterns on the filter the crawler consults before queueing a URL.
+     *
+     * @param robotsTxt The parsed robots.txt.
+     * @param hostUrl The scheme and authority the patterns are relative to.
+     * @param crawlerContext The context to apply them to.
+     */
+    protected void applyRobotsTxt(final RobotsTxt robotsTxt, final String hostUrl, final CrawlerContext crawlerContext) {
+        final String[] sitemaps = robotsTxt.getSitemaps();
+        if (sitemaps.length > 0) {
+            crawlerContext.addSitemaps(sitemaps);
+        }
+
+        // Matched against the user agent the crawl sends, which is the one the browser context carries.
+        final RobotsTxt.Directive directive =
+                robotsTxt.getMatchedDirective(getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class));
+        if (directive == null) {
+            return;
+        }
+        final UrlFilter urlFilter = crawlerContext.getUrlFilter();
+        if (urlFilter == null) {
+            return;
+        }
+        for (final String urlPattern : directive.getDisallows()) {
+            if (StringUtil.isNotBlank(urlPattern)) {
+                final String urlValue = hostUrl + convertRobotsTxtPatternToRegex(urlPattern);
+                urlFilter.addExclude(urlValue);
+                if (logger.isInfoEnabled()) {
+                    logger.info("Excluded URL: {}", urlValue);
+                }
+            }
+        }
+        for (final String urlPattern : directive.getAllows()) {
+            if (StringUtil.isNotBlank(urlPattern)) {
+                final String urlValue = hostUrl + convertRobotsTxtPatternToRegex(urlPattern);
+                urlFilter.addInclude(urlValue);
+                if (logger.isInfoEnabled()) {
+                    logger.info("Included URL: {}", urlValue);
+                }
+            }
+        }
+    }
+
+    /**
+     * Converts a robots.txt path pattern to the regular expression the URL filter matches with.
+     *
+     * <p>Same conversion the HTTP clients use, so a directive scopes a crawl identically whichever
+     * client reads it.</p>
+     *
+     * @param path The path pattern from a robots.txt directive.
+     * @return The regular expression for it, to be appended to the host URL.
+     */
+    protected String convertRobotsTxtPatternToRegex(final String path) {
+        String newPath = path.replace(".", "\\.").replace("?", "\\?").replace("*", ".*");
+        if (newPath.charAt(0) != '/') {
+            newPath = ".*" + newPath;
+        }
+        if (!newPath.endsWith("$") && !newPath.endsWith(".*")) {
+            newPath = newPath + ".*";
+        }
+        return newPath.replace(".*.*", ".*");
     }
 
     /**
