@@ -160,8 +160,9 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
     }
 
     /**
-     * The HTML5 short form carries no semicolon, so the transformer downstream cannot see it and
-     * settles on UTF-8. The client has to reach the same answer rather than trusting the declaration.
+     * The HTML5 short form, which the transformer downstream reads as readily as the older spelling.
+     * The client has to honour it too: storing UTF-8 for a document that declares Shift_JIS this way
+     * leaves the transformer decoding those bytes as Shift_JIS.
      */
     @Test
     @Timeout(120)
@@ -212,20 +213,26 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
     }
 
     /**
-     * Pins the two properties of the downstream rule this client mirrors. Both are read from the
-     * transformer itself, so a change to either turns this red instead of silently reintroducing the
-     * disagreement these tests exist to prevent.
+     * Pins every property of the downstream rule this client mirrors. All of them are read from the
+     * transformer itself, so a change to any of them turns this red instead of silently reintroducing
+     * the disagreement these tests exist to prevent.
      */
     @Test
     public void test_downstreamContract() {
         final DownstreamTransformer transformer = new DownstreamTransformer();
         // The window PlaywrightClient scans before deciding how to encode.
         assertEquals(2048, transformer.getPreloadSizeForCharset());
-        // The semicolon is required, so the HTML5 short form is invisible downstream.
-        assertNull(transformer.parse("<meta charset=\"Shift_JIS\">"));
+        // Both spellings are read, and the value may be quoted either way or left bare.
         assertEquals("Shift_JIS", transformer.parse(SHIFT_JIS_META));
+        assertEquals("Shift_JIS", transformer.parse("<meta charset=\"Shift_JIS\">"));
+        assertEquals("Shift_JIS", transformer.parse("<meta charset='Shift_JIS'>"));
+        assertEquals("Shift_JIS", transformer.parse("<meta charset=Shift_JIS>"));
+        // The attributes of the tag may be spread over several lines.
+        assertEquals("Shift_JIS", transformer.parse("<meta\n    charset=\"Shift_JIS\">"));
         // The declaration has to sit inside a meta tag, so body text does not count as one.
         assertNull(transformer.parse("<p>Content-Type: text/html; charset=Shift_JIS</p>"));
+        // The name has to start an attribute, so a longer attribute name is not a declaration.
+        assertNull(transformer.parse("<meta data-charset=\"Shift_JIS\">"));
         // A meta tag the scan window cut in half still declares a charset, on both sides of the rule.
         assertEquals("Shift_JIS", transformer.parse(SHIFT_JIS_META.substring(0, SHIFT_JIS_META.length() - 1)));
     }
@@ -274,6 +281,58 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
         final Pair<byte[], String> encoded = client.encodeContent(content);
 
         assertEquals("UTF-8", encoded.getSecond());
+        assertDownstreamAgrees(encoded);
+    }
+
+    /**
+     * The HTML5 short form, with the browser left out of it. The client honours the declaration
+     * because the transformer downstream does, so the bytes round-trip instead of being written as
+     * UTF-8 and read back as Shift_JIS.
+     */
+    @Test
+    public void test_encodeContent_html5ShortForm() {
+        final PlaywrightClient client = new PlaywrightClient();
+        final String content = "<html><head><meta charset=\"Shift_JIS\"></head><body><p>" + JAPANESE + "</p></body></html>";
+
+        final Pair<byte[], String> encoded = client.encodeContent(content);
+
+        assertEquals("Shift_JIS", encoded.getSecond());
+        assertEquals(JAPANESE, paragraphOf(new String(encoded.getFirst(), Charset.forName("Shift_JIS"))));
+        assertDownstreamAgrees(encoded);
+    }
+
+    /**
+     * A charset that is not a declaration: the name has to start an attribute, so the transformer
+     * downstream reads nothing out of {@code data-charset} and settles on UTF-8. Honouring it here
+     * would write bytes it goes on to read the other way.
+     */
+    @Test
+    public void test_encodeContent_charsetInLongerAttributeName() {
+        final PlaywrightClient client = new PlaywrightClient();
+        final String content = "<html><head><meta data-charset=\"Shift_JIS\"></head><body><p>" + JAPANESE + "</p></body></html>";
+
+        final Pair<byte[], String> encoded = client.encodeContent(content);
+
+        assertEquals("UTF-8", encoded.getSecond());
+        assertEquals(JAPANESE, paragraphOf(new String(encoded.getFirst(), StandardCharsets.UTF_8)));
+        assertDownstreamAgrees(encoded);
+    }
+
+    /**
+     * A meta tag whose attributes are spread over several lines. The transformer downstream still
+     * finds the declaration in it, which is what the client has to agree with - the rule is matched
+     * against raw bytes, not against a parsed document, so the shape of the tag matters on both sides.
+     */
+    @Test
+    public void test_encodeContent_declarationSpanningLines() {
+        final PlaywrightClient client = new PlaywrightClient();
+        final String content = "<html><head><meta\n    http-equiv=\"Content-Type\"\n    content=\"text/html; charset=Shift_JIS\">"
+                + "</head><body><p>" + JAPANESE + "</p></body></html>";
+
+        final Pair<byte[], String> encoded = client.encodeContent(content);
+
+        assertEquals("Shift_JIS", encoded.getSecond());
+        assertEquals(JAPANESE, paragraphOf(new String(encoded.getFirst(), Charset.forName("Shift_JIS"))));
         assertDownstreamAgrees(encoded);
     }
 

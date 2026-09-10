@@ -1841,14 +1841,18 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     /**
      * The charset declaration the downstream HTML transformer looks for in the bytes this client
-     * emits. Deliberately the same pattern that transformer uses: the semicolon is required, which is
-     * why the HTML5 {@code <meta charset="...">} short form never matches it, and the declaration has
-     * to sit inside a {@code <meta} tag, which is why {@code ; charset=} occurring in body text does
-     * not count as one. The negated character class stops at the tag it started in without requiring a
-     * closing {@code >}, so a tag the scan window cut in half is still recognized - on both sides.
+     * emits. Deliberately the same pattern that transformer uses, so both sides recognize the same
+     * declarations: the {@code http-equiv="Content-Type"} spelling, where the charset follows a
+     * {@code ;} inside the content type, and the HTML5 {@code <meta charset="...">} short form, where
+     * it is an attribute of its own. The declaration has to sit inside a {@code <meta} tag, which is
+     * why {@code charset=} occurring in body text does not count as one, and the name has to start an
+     * attribute, so {@code data-charset} is not a declaration either. The negated character class
+     * stops at the tag it started in without requiring a closing {@code >}, so a tag the scan window
+     * cut in half is still recognized - on both sides - and it matches line terminators, so a tag
+     * whose attributes are spread over several lines is recognized too.
      */
     private static final Pattern CONTENT_CHARSET_PATTERN =
-            Pattern.compile("<meta\\s[^<>]*; *charset *= *([a-zA-Z0-9\\-_]+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("<meta\\s(?:[^<>]*?[\\s;])?charset *= *[\"']?([a-zA-Z0-9\\-_]+)", Pattern.CASE_INSENSITIVE);
 
     /**
      * How many leading bytes that transformer reads while looking for the declaration. Mirrors the
@@ -1924,8 +1928,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         // ISO-8859-1 maps every byte to one character, so the window stays a byte count and an ASCII
         // declaration is preserved whatever the document is really encoded in. The transformer decodes
         // this window with the platform default charset instead, but that reads the same declaration:
-        // the semicolon it starts with is not a valid trailing byte in any of these encodings, so a
-        // decoder resynchronises on it.
+        // the "<" the match is anchored to is not a valid trailing byte in any of these encodings, so
+        // a decoder resynchronises on it.
         final String head = new String(bytes, 0, Math.min(bytes.length, CONTENT_CHARSET_SCAN_SIZE), StandardCharsets.ISO_8859_1);
         final Matcher matcher = CONTENT_CHARSET_PATTERN.matcher(head);
         return matcher.find() ? matcher.group(1) : null;
