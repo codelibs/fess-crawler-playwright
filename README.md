@@ -28,14 +28,35 @@ A Playwright-based web crawler component for [Fess](https://fess.codelibs.org/) 
 - **OpenSearch**: Search engine integration (provided scope)
 - **JUnit + UTFlute**: Testing framework
 
-## Prerequisites
+## Installation
+
+From 15.9 this is a Fess plugin rather than part of the distribution.
+
+```
+$ bin/fess-setup install plugin fess-crawler-playwright
+$ bin/fess-setup install nodejs
+```
+
+Or download the jar from [maven.codelibs.org](https://maven.codelibs.org/org/codelibs/fess/fess-crawler-playwright/)
+and put it in `app/WEB-INF/plugin`. Restart Fess afterwards: the components this plugin
+contributes are read when the DI container is built.
+
+The second command is needed because the plugin carries the Playwright API and its JS driver but
+not the Node.js binary that runs the driver. `bin/fess.in.sh` finds an installed Node.js and sets
+`PLAYWRIGHT_NODEJS_PATH`; point that variable at your own if you would rather not install one
+here. Browsers are separate again, and Playwright downloads them on first use.
+
+Then name the client in a crawling configuration's parameters, for example
+`client.crawlerClients=playwright:http://.*`.
+
+## Building from Source
+
+### Prerequisites
 
 - Java 21 or higher
 - Maven 3.x
 - Node.js and npm (for Playwright browser installation)
 - Fess parent POM dependency
-
-## Installation
 
 ### 1. Install Fess Parent POM
 
