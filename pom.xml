@@ -73,6 +73,51 @@
 				<artifactId>license-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
+				<artifactId>maven-shade-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+							<!-- This jar is installed into WEB-INF/plugin, where nothing resolves its
+							     dependencies for it, so the two artifacts the war no longer carries
+							     have to travel inside it. No relocation: PlaywrightClient and the
+							     Playwright API it binds to are both in this jar, but DriverJar looks
+							     its driver up by the literal resource name "driver/package", which a
+							     relocation would not rewrite.
+							     The list is an include list rather than an exclude list because it is
+							     short and closed: everything else this module compiles against -
+							     fess-crawler, corelib, opensearch, log4j, and commons-pool2, which
+							     fess-crawler brings in on its own - is in WEB-INF/lib, which precedes
+							     WEB-INF/plugin on every class path Fess builds. -->
+							<artifactSet>
+								<includes>
+									<include>com.microsoft.playwright:playwright</include>
+									<include>com.microsoft.playwright:driver</include>
+								</includes>
+							</artifactSet>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+										<exclude>module-info.class</exclude>
+									</excludes>
+								</filter>
+							</filters>
+							<transformers>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+							</transformers>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<properties>
@@ -155,11 +200,38 @@
 			<groupId>com.microsoft.playwright</groupId>
 			<artifactId>playwright</artifactId>
 			<version>${playwright.version}</version>
+			<exclusions>
+				<exclusion>
+					<!-- driver-bundle is five Node.js binaries, one per platform, and nothing else:
+					     191 MiB, for a crawler that is off by default. The JS driver itself lives in
+					     com.microsoft.playwright:driver, which stays and is shaded in below.
+					     DriverJar reads it as a plain class path resource ("driver/package"), so it
+					     survives shading; it only reaches for "driver/<platform>", the binary this
+					     exclusion removes, when no Node.js is configured. Fess points it at one
+					     through PLAYWRIGHT_NODEJS_PATH, which bin/fess.in.sh sets from
+					     bin/fess-setup install nodejs.
+					     NOTE: this split only exists from Playwright 1.62.0. In 1.60 and earlier
+					     DriverJar itself lived in driver-bundle, so excluding it there would take
+					     the driver away with it. -->
+					<groupId>com.microsoft.playwright</groupId>
+					<artifactId>driver-bundle</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>org.dbflute.utflute</groupId>
 			<artifactId>utflute-core</artifactId>
 			<version>${utflute.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<!-- Excluded from the compile scope above so it stays out of the plugin jar, and put
+			     back here because the tests drive a real browser: without a Node.js binary on the
+			     class path DriverJar fails every launch. Test scope does not reach the shade
+			     plugin, so the jar this module publishes is unaffected. -->
+			<groupId>com.microsoft.playwright</groupId>
+			<artifactId>driver-bundle</artifactId>
+			<version>${playwright.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
