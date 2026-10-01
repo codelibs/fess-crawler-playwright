@@ -66,14 +66,18 @@ import org.codelibs.fess.crawler.container.CrawlerContainer;
 import org.codelibs.fess.crawler.entity.RequestData;
 import org.codelibs.fess.crawler.entity.RequestData.Method;
 import org.codelibs.fess.crawler.entity.ResponseData;
-import org.codelibs.fess.crawler.entity.RobotsTxt;
 import org.codelibs.fess.crawler.exception.ChildUrlsException;
 import org.codelibs.fess.crawler.exception.CrawlerSystemException;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
+import org.codelibs.fess.crawler.exception.RobotsTxtDisallowedException;
+import org.codelibs.fess.crawler.exception.RobotsTxtUnavailableException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
+import org.codelibs.fess.crawler.helper.RobotsTxtFetcher;
 import org.codelibs.fess.crawler.helper.RobotsTxtHelper;
+import org.codelibs.fess.crawler.helper.RobotsTxtPolicy;
+import org.codelibs.fess.crawler.helper.RobotsTxtResponse;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
 
 import com.microsoft.playwright.APIResponse;
@@ -91,6 +95,7 @@ import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.Proxy;
+import com.microsoft.playwright.options.RequestOptions;
 
 import jakarta.annotation.Resource;
 
@@ -1648,26 +1653,26 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
-     * Applies the site's robots.txt to this crawl, once per host.
+     * Checks a URL against the robots.txt of its origin, before the page is fetched.
      *
      * <p>Whether a crawl obeys robots.txt must not depend on which client a crawl configuration routed
-     * it to, and the HTTP clients read it in their own {@code processRobotsTxt}. This client is not one
-     * of them, so a configuration that adds {@code client.crawlerClients=playwright:...} would otherwise
-     * lose robots.txt for that site while every setting still said it was being honoured.</p>
+     * it to. robots.txt is therefore resolved by
+     * {@link RobotsTxtHelper#checkRobotsTxt(CrawlerContext, String, String, RobotsTxtFetcher, RobotsTxtPolicy)},
+     * as the HTTP clients do: once per origin, with redirects followed by the helper, the status code read
+     * as RFC 9309 describes and the longest matching rule deciding. This client only supplies the fetch,
+     * {@link #fetchRobotsTxt(String, BrowserContext)}.</p>
      *
-     * <p>Fetched through the browser context, so it goes out over the same proxy, credentials, TLS
-     * settings and user agent as the crawl itself - a separately built HTTP client would have had to
-     * repeat all of that to ask the same question.</p>
+     * <p>Nothing is checked without a crawl context for the current thread, when the crawl configuration
+     * turns robots.txt off, or when no RobotsTxtHelper is available.</p>
      *
-     * <p>Failing to read robots.txt never fails the page: this is scoping for the crawl, and a site that
-     * does not answer for it still answers for its pages.</p>
-     *
-     * @param url The URL about to be crawled, used for its host.
+     * @param url The URL about to be crawled.
      * @param browserContext The context to fetch robots.txt with.
+     * @throws RobotsTxtDisallowedException If robots.txt does not allow the URL.
+     * @throws RobotsTxtUnavailableException If robots.txt is unavailable and the URL should be retried later.
      */
     protected void processRobotsTxt(final String url, final BrowserContext browserContext) {
-        // First, because it is what the directives would be applied to: with no crawl context nothing is
-        // queueing URLs from this request, so there is nothing for robots.txt to scope.
+        // The per-origin state robots.txt is resolved into lives on the crawl context, so there is nothing
+        // to check against without one.
         final CrawlerContext crawlerContext = CrawlingParameterUtil.getCrawlerContext();
         if (crawlerContext == null) {
             return;
@@ -1686,105 +1691,73 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return;
         }
 
-        final int idx = url.indexOf('/', url.indexOf("://") + 3);
-        final String hostUrl = idx >= 0 ? url.substring(0, idx) : url;
-        final String robotsTxtUrl = hostUrl + "/robots.txt";
-        // add() reports whether this host is new, so one crawl fetches robots.txt once however many
-        // pages it visits. Checking and adding in one call also keeps two threads from both fetching it.
-        if (!crawlerContext.getRobotsTxtUrlSet().add(robotsTxtUrl)) {
-            return;
-        }
-
-        if (logger.isInfoEnabled()) {
-            logger.info("Checking URL: {}", robotsTxtUrl);
-        }
-        try {
-            final APIResponse response = browserContext.request().get(robotsTxtUrl);
-            try {
-                if (response.status() != 200) {
-                    return;
-                }
-                // Fetched from whatever host the crawl reached, so it gets the same declared-length
-                // bound as a page: nothing else keeps an oversized robots.txt out of memory.
-                checkDeclaredContentLength(response.headers(), robotsTxtUrl);
-                final RobotsTxt robotsTxt = robotsTxtHelper.parse(new ByteArrayInputStream(response.body()));
-                if (robotsTxt != null) {
-                    applyRobotsTxt(robotsTxt, hostUrl, crawlerContext);
-                }
-            } finally {
-                response.dispose();
-            }
-        } catch (final Exception e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Could not process {}", robotsTxtUrl, e);
-            } else if (logger.isInfoEnabled()) {
-                logger.info("Could not process {}. {}", robotsTxtUrl, e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Puts what robots.txt said into the crawl: the sitemaps it advertises, and the paths the matched
-     * directive opens or closes, as patterns on the filter the crawler consults before queueing a URL.
-     *
-     * @param robotsTxt The parsed robots.txt.
-     * @param hostUrl The scheme and authority the patterns are relative to.
-     * @param crawlerContext The context to apply them to.
-     */
-    protected void applyRobotsTxt(final RobotsTxt robotsTxt, final String hostUrl, final CrawlerContext crawlerContext) {
-        final String[] sitemaps = robotsTxt.getSitemaps();
-        if (sitemaps.length > 0) {
-            crawlerContext.addSitemaps(sitemaps);
-        }
-
+        final RobotsTxtPolicy policy = new RobotsTxtPolicy(true, true,
+                getInitParameter(HcHttpClient.ROBOTS_TXT_ALLOW_ON_UNAVAILABLE_PROPERTY, Boolean.FALSE, Boolean.class).booleanValue(),
+                getInitParameter(HcHttpClient.ROBOTS_TXT_MAX_RETRIES_PROPERTY, crawlerContext.getRobotsTxtMaxRetries(), Integer.class)
+                        .intValue());
         // Matched against the user agent the crawl sends, which is the one the browser context carries.
-        final RobotsTxt.Directive directive =
-                robotsTxt.getMatchedDirective(getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class));
-        if (directive == null) {
-            return;
-        }
-        final UrlFilter urlFilter = crawlerContext.getUrlFilter();
-        if (urlFilter == null) {
-            return;
-        }
-        for (final String urlPattern : directive.getDisallows()) {
-            if (StringUtil.isNotBlank(urlPattern)) {
-                final String urlValue = hostUrl + convertRobotsTxtPatternToRegex(urlPattern);
-                urlFilter.addExclude(urlValue);
-                if (logger.isInfoEnabled()) {
-                    logger.info("Excluded URL: {}", urlValue);
+        final String userAgent = getInitParameter(HcHttpClient.USER_AGENT_PROPERTY, null, String.class);
+        robotsTxtHelper.checkRobotsTxt(crawlerContext, url, userAgent, robotsTxtUrl -> fetchRobotsTxt(robotsTxtUrl, browserContext),
+                policy);
+    }
+
+    /**
+     * Fetches a robots.txt URL once, without following redirects.
+     *
+     * <p>Fetched through the browser context, so it goes out over the same proxy, credentials, TLS
+     * settings and user agent as the crawl itself. A redirect comes back as it is, for
+     * {@link RobotsTxtHelper} to follow and count.</p>
+     *
+     * <p>The body of a 2xx response is bounded like a page, since it comes from whatever host the crawl
+     * reached: a declared length over {@code maxContentLength} fails before the body is read, and a body
+     * without one fails once it turns out longer - the browser hands the body over whole, so there is no
+     * earlier point to stop it.</p>
+     *
+     * @param robotsTxtUrl The robots.txt URL.
+     * @param browserContext The context to fetch it with.
+     * @return The response.
+     * @throws MaxLengthExceededException If the body is longer than {@code maxContentLength}.
+     */
+    protected RobotsTxtResponse fetchRobotsTxt(final String robotsTxtUrl, final BrowserContext browserContext) {
+        final APIResponse response = browserContext.request().get(robotsTxtUrl, RequestOptions.create().setMaxRedirects(0));
+        try {
+            final int statusCode = response.status();
+            final Map<String, String> headers = response.headers();
+            byte[] body = null;
+            String charset = null;
+            if (statusCode >= 200 && statusCode < 300) {
+                checkDeclaredContentLength(headers, robotsTxtUrl);
+                body = response.body();
+                if (maxContentLength != null && body != null && body.length > maxContentLength.longValue()) {
+                    throw new MaxLengthExceededException("The content length (" + body.length + " byte) is over "
+                            + maxContentLength.longValue() + " byte. The url is " + robotsTxtUrl);
                 }
+                charset = getContentTypeCharset(headers.get("content-type"));
             }
-        }
-        for (final String urlPattern : directive.getAllows()) {
-            if (StringUtil.isNotBlank(urlPattern)) {
-                final String urlValue = hostUrl + convertRobotsTxtPatternToRegex(urlPattern);
-                urlFilter.addInclude(urlValue);
-                if (logger.isInfoEnabled()) {
-                    logger.info("Included URL: {}", urlValue);
-                }
-            }
+            return new RobotsTxtResponse(statusCode, headers.get("location"), headers.get("retry-after"), body, charset);
+        } finally {
+            response.dispose();
         }
     }
 
     /**
-     * Converts a robots.txt path pattern to the regular expression the URL filter matches with.
+     * Returns the {@code charset} parameter of a Content-Type header value, without quotes.
      *
-     * <p>Same conversion the HTTP clients use, so a directive scopes a crawl identically whichever
-     * client reads it.</p>
-     *
-     * @param path The path pattern from a robots.txt directive.
-     * @return The regular expression for it, to be appended to the host URL.
+     * @param contentType The Content-Type header value, may be {@code null}.
+     * @return The charset, or {@code null} when there is none.
      */
-    protected String convertRobotsTxtPatternToRegex(final String path) {
-        String newPath = path.replace(".", "\\.").replace("?", "\\?").replace("*", ".*");
-        if (newPath.charAt(0) != '/') {
-            newPath = ".*" + newPath;
+    protected static String getContentTypeCharset(final String contentType) {
+        if (contentType == null) {
+            return null;
         }
-        if (!newPath.endsWith("$") && !newPath.endsWith(".*")) {
-            newPath = newPath + ".*";
+        for (final String param : contentType.split(";")) {
+            final int idx = param.indexOf('=');
+            if (idx > 0 && "charset".equalsIgnoreCase(param.substring(0, idx).trim())) {
+                final String charset = param.substring(idx + 1).trim().replace("\"", "").trim();
+                return charset.isEmpty() ? null : charset;
+            }
         }
-        return newPath.replace(".*.*", ".*");
+        return null;
     }
 
     /**
