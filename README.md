@@ -195,6 +195,26 @@ ResponseData responseData = client.execute(requestData);
 String content = new String(responseData.getResponseBody(), responseData.getCharSet());
 ```
 
+### What a Dynamic Page Gives the Crawler
+
+The crawler indexes the DOM after `renderedState` has been reached (`page.content()`), and follows the
+links in that DOM. This is how common dynamic-page patterns come out:
+
+| Pattern | Result |
+|---------|--------|
+| Content or links built by JavaScript | Indexed and followed |
+| A page that navigates itself (`location.replace`, `<meta http-equiv="refresh">`) | The page it ends up on is indexed, under its own URL; the URL filter applies to it as to a server redirect |
+| Content added by a timer after the network went idle | Not in the index; add `contentWaitDuration` (milliseconds) |
+| Links such as `<a href="#/about">` that only change the fragment | Not indexed as separate documents |
+| Links added by script with a relative `href` | Resolved against the URL that was crawled, not against a URL the page set with `history.pushState` |
+| `<meta name="robots" content="noindex">` added by script | Honoured |
+| `alert()`, `confirm()` and `prompt()` on load | Dismissed; the crawl does not wait on them |
+| Cookies and `localStorage` | Available to the page's script |
+| Content inside an open shadow root | Not in the index (it is not part of the serialized DOM) |
+| Content of an `<iframe>` | Not in the index of the outer page; the `src` is followed as a page of its own |
+| Items loaded when the page is scrolled (infinite scroll) | Only what is there before scrolling |
+| Navigation that exists only in an `onclick` handler | Not followed; the target needs a link with an `href` or another route to it |
+
 ### Handling File Downloads
 
 ```java
