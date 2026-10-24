@@ -635,10 +635,29 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                     : browser == null ? "Browser launch (" + browserName + ")"
                             : browserContext == null ? "BrowserContext creation" : "Page creation";
             throw new CrawlerSystemException("Failed to create Playwright worker at stage: " + failureStage + ". Browser: " + browserName
-                    + ", LaunchOptions: " + (launchOptions != null), e);
+                    + ", LaunchOptions: " + (launchOptions != null) + (playwright == null ? nodeJsHint(e) : ""), e);
         }
 
         return new Tuple4<>(playwright, browser, browserContext, page);
+    }
+
+    /**
+     * Tells how to install Node.js when Playwright could not start because it has none.
+     *
+     * <p>Playwright's own message suggests adding the {@code driver-bundle} dependency, which a Fess user
+     * cannot act on: this client is a plugin and Node.js is installed with {@code bin/fess-setup}.</p>
+     *
+     * @param e The failure of {@link Playwright#create}.
+     * @return The hint to append to the failure message, or an empty string if Node.js is not the cause.
+     */
+    protected static String nodeJsHint(final Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t.getMessage() != null && t.getMessage().contains("bundled Node.js")) {
+                return " Node.js was not found. Install it with bin/fess-setup install nodejs and restart Fess,"
+                        + " or set the PLAYWRIGHT_NODEJS_PATH environment variable to a Node.js binary.";
+            }
+        }
+        return "";
     }
 
     /**
