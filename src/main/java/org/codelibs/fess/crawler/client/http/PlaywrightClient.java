@@ -1159,7 +1159,15 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
                 }
-                return createResponseData(page, request, response, null);
+                // navigate() returns the response of the document it started with. When that document
+                // navigates itself away (location.replace, <meta http-equiv="refresh">) the body of that
+                // response can no longer be read, and the page the browser ended up on is the one to
+                // index. responseRef holds the latest main-frame navigation, so a later one replaces it.
+                final Response loaded = responseRef.get() != null ? responseRef.get() : response;
+                if (loaded != response && logger.isDebugEnabled()) {
+                    logger.debug("The page navigated itself from {} to {}", response.url(), loaded.url());
+                }
+                return createResponseData(page, request, loaded, null);
             } finally {
                 // Clean up event handlers to prevent memory leaks
                 page.offResponse(responseHandler);
