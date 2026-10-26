@@ -38,4 +38,15 @@ public class PlaywrightClientNodeJsHintTest extends PlainTestCase {
         assertEquals("", PlaywrightClient.nodeJsHint(new RuntimeException("Connection refused")));
         assertEquals("", PlaywrightClient.nodeJsHint(new RuntimeException()));
     }
+
+    @Test
+    public void test_nodeJsHint_invalidNodeJsPath() {
+        // The message Playwright itself raises when PLAYWRIGHT_NODEJS_PATH names a file that does not exist.
+        // The driver wraps it in "Failed to create driver", so the path message is deeper in the cause chain.
+        final Exception cause =
+                new RuntimeException("Failed to create driver", new RuntimeException("Invalid Node.js path specified: /no/such/node"));
+        final String hint = PlaywrightClient.nodeJsHint(new IllegalStateException("outer", cause));
+        assertTrue(hint.contains("PLAYWRIGHT_NODEJS_PATH"));
+        assertTrue(hint.contains("bin/fess-setup install nodejs"));
+    }
 }
