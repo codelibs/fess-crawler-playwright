@@ -1500,7 +1500,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             if (logger.isDebugEnabled()) {
                 logger.debug("Error status code {}, returning empty response body", statusCode);
             }
-            responseData.setContentLength(0);
+            // The body is not kept, but the size the server declared for it is what a failure URL records.
+            responseData.setContentLength(getDeclaredContentLength(headers));
             responseData.setResponseBody(new byte[0]);
             responseData.setMimeType(getContentType(response));
         } else if (download == null) {
@@ -1613,6 +1614,28 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             return "index.html";
         }
         return value;
+    }
+
+    /**
+     * Gets the length the response declares in its {@code Content-Length} header, which is all the size
+     * known for an error response whose body is not read.
+     *
+     * @param headers The response headers, keyed by lower-case name.
+     * @return The declared length, or 0 when the header is missing or is not a non-negative number.
+     */
+    protected long getDeclaredContentLength(final Map<String, String> headers) {
+        final String contentLength = headers.get("content-length");
+        if (StringUtil.isBlank(contentLength)) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Long.parseLong(contentLength.trim()));
+        } catch (final NumberFormatException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Could not parse the content-length header '{}'", contentLength);
+            }
+            return 0;
+        }
     }
 
     /**
