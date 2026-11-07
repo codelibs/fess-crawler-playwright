@@ -16,6 +16,7 @@
 package org.codelibs.fess.crawler.client.http;
 
 import java.util.Date;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -40,6 +41,28 @@ public class PlaywrightClientInternalMethodTest extends PlainTestCase {
     protected void tearDown(final TestInfo testInfo) throws Exception {
         playwrightClient = null;
         super.tearDown(testInfo);
+    }
+
+    // ==================== getDeclaredContentLength tests ====================
+
+    /**
+     * Test getDeclaredContentLength reads the length an error response declares.
+     */
+    @Test
+    public void test_getDeclaredContentLength() {
+        assertEquals(37L, playwrightClient.getDeclaredContentLength(Map.of("content-length", "37")));
+        assertEquals(37L, playwrightClient.getDeclaredContentLength(Map.of("content-length", " 37 ")));
+    }
+
+    /**
+     * Test getDeclaredContentLength falls back to 0 when no usable length is declared.
+     */
+    @Test
+    public void test_getDeclaredContentLength_unknown() {
+        assertEquals(0L, playwrightClient.getDeclaredContentLength(Map.of()));
+        assertEquals(0L, playwrightClient.getDeclaredContentLength(Map.of("content-length", "")));
+        assertEquals(0L, playwrightClient.getDeclaredContentLength(Map.of("content-length", "abc")));
+        assertEquals(0L, playwrightClient.getDeclaredContentLength(Map.of("content-length", "-5")));
     }
 
     // ==================== getFilename tests ====================

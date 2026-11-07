@@ -135,7 +135,7 @@ public class PlaywrightClientResponseTest extends PlainTestCase {
 
     /**
      * A 400 response is an error page, so its body must not be stored as content - the same treatment
-     * every other 4xx and 5xx status already gets.
+     * every other 4xx and 5xx status already gets. The size the server declared for it is still recorded.
      */
     @Test
     @Timeout(60)
@@ -159,7 +159,8 @@ public class PlaywrightClientResponseTest extends PlainTestCase {
             final ResponseData responseData = client.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
             assertEquals(400, responseData.getHttpStatusCode());
-            assertEquals(0L, responseData.getContentLength());
+            // the body is dropped, but its declared size is kept for the failure URL, as the HTTP client does
+            assertEquals((long) "<html><body>bad request</body></html>".length(), responseData.getContentLength());
             assertEquals("text/html", responseData.getMimeType());
         } finally {
             client.close();

@@ -98,7 +98,8 @@ public class PlaywrightClientTest extends PlainTestCase {
                 assertEquals("GET", responseData.getMethod());
                 assertEquals("iso-8859-1", responseData.getCharSet());
                 assertEquals("text/html", responseData.getMimeType());
-                assertEquals(0L, responseData.getContentLength());
+                // the size the server declares for the error page; the body itself is not read
+                assertTrue(responseData.getContentLength() > 0);
                 final String body = getBodyAsString(responseData);
                 assertEquals("", body);
             }

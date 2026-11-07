@@ -252,7 +252,8 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
             assertEquals(404, responseData.getHttpStatusCode());
-            assertEquals(0L, responseData.getContentLength());
+            // the size the server declares for the error page; the body itself is not read
+            assertTrue(responseData.getContentLength() > 0);
         } finally {
             playwrightClient.close();
         }
@@ -280,7 +281,8 @@ public class PlaywrightClientExceptionTest extends PlainTestCase {
             final ResponseData responseData = playwrightClient.execute(RequestDataBuilder.newRequestData().get().url(url).build());
 
             assertTrue(responseData.getHttpStatusCode() >= 400);
-            assertEquals(0L, responseData.getContentLength());
+            // the size the server declares for the error page; the body itself is not read
+            assertTrue(responseData.getContentLength() > 0);
             assertNotNull(responseData.getResponseBody());
         } finally {
             playwrightClient.close();
