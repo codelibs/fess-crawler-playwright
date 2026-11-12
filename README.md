@@ -214,6 +214,7 @@ links in that DOM. This is how common dynamic-page patterns come out:
 | Content of an `<iframe>` | Not in the index of the outer page; the `src` is followed as a page of its own |
 | Items loaded when the page is scrolled (infinite scroll) | Only what is there before scrolling |
 | Navigation that exists only in an `onclick` handler | Not followed; the target needs a link with an `href` or another route to it |
+| A URL with a user name and password (`http://user:password@host/`) | Refused before a browser request, as the HTTP clients do; register the credentials as a web authentication of the crawl configuration |
 
 ### Handling File Downloads
 

@@ -79,6 +79,7 @@ import org.codelibs.fess.crawler.helper.RobotsTxtHelper;
 import org.codelibs.fess.crawler.helper.RobotsTxtPolicy;
 import org.codelibs.fess.crawler.helper.RobotsTxtResponse;
 import org.codelibs.fess.crawler.util.CrawlingParameterUtil;
+import org.codelibs.fess.crawler.util.UserInfoUtil;
 
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.Browser;
@@ -642,6 +643,25 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     }
 
     /**
+     * Rejects a URL that carries a user name and password in front of the host ({@code http://user:password@host/}).
+     *
+     * <p>The HTTP clients refuse such a URL before sending a request. The browser accepts it, so without this check
+     * the page would be fetched and indexed under a URL that quotes the password, which then appears in the search
+     * results. The credentials of a site belong in the web authentication of the crawl configuration. The message
+     * does not quote the userinfo.</p>
+     *
+     * @param url The URL to be fetched.
+     * @throws CrawlingAccessException If the URL has a userinfo.
+     */
+    protected static void rejectUserInfo(final String url) {
+        final String withoutUserInfo = UserInfoUtil.removeUserInfo(url);
+        if (withoutUserInfo != null && !withoutUserInfo.equals(url)) {
+            throw new CrawlingAccessException("Failed to access the URL. A user name and password in the URL are not supported;"
+                    + " register them as a web authentication of the crawl configuration instead. URL: " + withoutUserInfo);
+        }
+    }
+
+    /**
      * Tells how to install Node.js when Playwright could not start because it has none, or because
      * {@code PLAYWRIGHT_NODEJS_PATH} points at a file that does not exist.
      *
@@ -1021,6 +1041,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
 
     @Override
     public ResponseData execute(final RequestData request) {
+        rejectUserInfo(request.getUrl());
         if (worker == null) {
             if (closed) {
                 // This instance was already closed and never re-init()'d since: reject immediately
