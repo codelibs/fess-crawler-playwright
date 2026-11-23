@@ -15,7 +15,7 @@ A Playwright-based web crawler component for [Fess](https://fess.codelibs.org/) 
 - **SSL Flexibility**: Option to ignore SSL certificate validation for testing
 - **File Downloads**: Handles various content types including PDF, images, documents
 - **Resource Management**: Efficient browser context sharing and cleanup
-- **robots.txt**: `Disallow`, `Allow` and `Sitemap` directives are honoured, the same as the HTTP clients
+- **robots.txt**: `Disallow`, `Allow`, `Sitemap`, `Crawl-delay`, `Request-rate` and `Visit-time` are honoured, the same as the HTTP clients: the rules are resolved by fess-crawler's `RobotsTxtHelper`, so a crawl behaves the same whichever client it is routed to. A URL outside the `Visit-time` (UTC) is skipped without being fetched and without being recorded as a failure
 - **Configurable Rendering States**: Control when to extract content (load, DOMContentLoaded, networkidle)
 
 ## Technology Stack
@@ -329,7 +329,7 @@ as well:
 | `userAgent` | browser default | User agent to send. Without it the browser announces itself as HeadlessChrome |
 | `requestHeaders` | - | Extra request headers. Repeated names are joined into one comma-separated value |
 | `maxContentLength` | - | Maximum content length in bytes |
-| `robotsTxtEnabled` | `true` | Whether the site's `robots.txt` is honoured. Fetched once per host through the browser context, so it goes out over the same proxy, credentials, TLS settings and user agent as the crawl. `Disallow` and `Allow` become exclude and include patterns on the crawl's URL filter, and `Sitemap` lines are handed to the crawler. A site that does not answer for robots.txt is still crawled |
+| `robotsTxtEnabled` | `true` | Whether the site's `robots.txt` is honoured. Fetched once per host through the browser context, so it goes out over the same proxy, credentials, TLS settings and user agent as the crawl. The rules are evaluated per URL before the page is fetched (a disallowed URL throws `RobotsTxtDisallowedException`, one outside the `Visit-time` throws `RobotsTxtVisitTimeException`), and `Sitemap` lines are handed to the crawler. The waits for `Crawl-delay` and `Request-rate` are made by the crawler's interval controller, not by this client. A site without a robots.txt (404) is crawled; a robots.txt that cannot be read (for example a 503) defers the URL for a later retry unless `robotsTxtAllowOnUnavailable` is set |
 
 `connectionTimeout` and `soTimeout` are deliberately **not** applied to the browser. Both bound a single
 socket operation, whereas a Playwright timeout bounds a whole browser operation - the values commonly

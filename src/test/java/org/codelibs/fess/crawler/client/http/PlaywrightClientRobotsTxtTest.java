@@ -19,6 +19,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,10 +29,13 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.codelibs.fess.crawler.CrawlerContext;
+import org.codelibs.fess.crawler.entity.HostState;
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
 import org.codelibs.fess.crawler.exception.RobotsTxtDisallowedException;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.RobotsTxtUnavailableException;
+import org.codelibs.fess.crawler.exception.RobotsTxtVisitTimeException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.RobotsTxtHelper;
@@ -546,5 +551,75 @@ public class PlaywrightClientRobotsTxtTest extends PlainTestCase {
                 });
 
         assertFalse(requestedPaths.contains("/robots.txt"));
+    }
+
+    /** {@code HHMM} of the UTC time of day {@code minutesFromNow} from now, which is what robots.txt writes. */
+    private static String utcHhmm(final int minutesFromNow) {
+        final LocalTime time = LocalTime.now(ZoneOffset.UTC).plusMinutes(minutesFromNow);
+        return String.format("%02d%02d", Integer.valueOf(time.getHour()), Integer.valueOf(time.getMinute()));
+    }
+
+    /**
+     * A URL outside the Visit-time is not fetched, and it is not reported as a failure: the exception is
+     * not a CrawlingAccessException, which is what makes the crawler record a failure URL.
+     */
+    @Test
+    @Timeout(60)
+    public void test_execute_urlOutsideVisitTimeIsNotFetchedAndIsNotAFailure() throws Exception {
+        final int port = freePort();
+        final List<String> requestedPaths = Collections.synchronizedList(new ArrayList<>());
+        final String later = utcHhmm(120) + "-" + utcHhmm(180);
+
+        crawl(port, robotsTxt("User-agent: *\nVisit-time: " + later + "\n"), new HashMap<>(), new RecordingUrlFilter(), requestedPaths,
+                (client, baseUrl, crawlerContext) -> {
+                    try {
+                        get(client, baseUrl + "/page.html");
+                        fail(); // the origin only wants visits at another time of day
+                    } catch (final RobotsTxtVisitTimeException e) {
+                        assertFalse(((Object) e) instanceof CrawlingAccessException);
+                        assertTrue(e.getMessage().endsWith(baseUrl + "/page.html"));
+                    }
+                    assertTrue(crawlerContext.getHostState(baseUrl).isOutsideVisitTime());
+                });
+
+        assertTrue(requestedPaths.contains("/robots.txt"));
+        assertFalse(requestedPaths.contains("/page.html"));
+    }
+
+    /** One Visit-time line that holds the current time is enough, however many other lines there are. */
+    @Test
+    @Timeout(60)
+    public void test_execute_urlInsideVisitTimeIsFetched() throws Exception {
+        final int port = freePort();
+        final List<String> requestedPaths = Collections.synchronizedList(new ArrayList<>());
+        final String later = utcHhmm(120) + "-" + utcHhmm(180);
+        final String now = utcHhmm(-60) + "-" + utcHhmm(60);
+
+        crawl(port, robotsTxt("User-agent: *\nVisit-time: " + later + "\nVisit-time: " + now + "\n"), new HashMap<>(),
+                new RecordingUrlFilter(), requestedPaths, (client, baseUrl, crawlerContext) -> {
+                    assertEquals(200, get(client, baseUrl + "/page.html").getHttpStatusCode());
+                });
+
+        assertTrue(requestedPaths.contains("/page.html"));
+    }
+
+    /**
+     * The wait for a Request-rate is the interval controller's, which reads it from the host state of the
+     * crawl context. This client has to leave it there: a rate whose time of day holds now is in force,
+     * one whose time of day does not is not.
+     */
+    @Test
+    @Timeout(60)
+    public void test_execute_requestRateReachesTheHostState() throws Exception {
+        final int port = freePort();
+        final String now = utcHhmm(-60) + "-" + utcHhmm(60);
+        final String later = utcHhmm(120) + "-" + utcHhmm(180);
+
+        crawl(port, robotsTxt("User-agent: *\nRequest-rate: 1/5 " + now + "\nRequest-rate: 1/50 " + later + "\n"), new HashMap<>(),
+                new RecordingUrlFilter(), Collections.synchronizedList(new ArrayList<>()), (client, baseUrl, crawlerContext) -> {
+                    assertEquals(200, get(client, baseUrl + "/page.html").getHttpStatusCode());
+                    final HostState hostState = crawlerContext.getHostState(baseUrl);
+                    assertEquals(5000L, hostState.getDelayMillis(System.currentTimeMillis()));
+                });
     }
 }
