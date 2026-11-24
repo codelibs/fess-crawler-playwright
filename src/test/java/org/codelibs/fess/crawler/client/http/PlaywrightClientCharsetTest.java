@@ -25,6 +25,7 @@ import org.codelibs.core.misc.Pair;
 
 import org.codelibs.fess.crawler.builder.RequestDataBuilder;
 import org.codelibs.fess.crawler.entity.ResponseData;
+import org.codelibs.fess.crawler.extractor.impl.TikaExtractor;
 import org.codelibs.fess.crawler.helper.MimeTypeHelper;
 import org.codelibs.fess.crawler.helper.impl.MimeTypeHelperImpl;
 import org.codelibs.fess.crawler.transformer.impl.HtmlTransformer;
@@ -354,8 +355,10 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
     }
 
     /**
-     * Asserts the transformer downstream reaches the same charset the client labelled the bytes with -
-     * the invariant this mirroring exists to hold.
+     * Asserts the transformer downstream decodes the bytes with the charset the client labelled them with,
+     * or with the charset that extends it - the invariant this mirroring exists to hold. A declared
+     * Shift_JIS or EUC-JP is decoded as windows-31j or x-eucJP-Open (fess-crawler#243), which read every
+     * byte sequence of the declared charset the same way, so the bytes still round-trip.
      *
      * @param encoded the bytes and the charset the client labelled them with
      */
@@ -364,6 +367,6 @@ public class PlaywrightClientCharsetTest extends PlainTestCase {
         responseData.setCharSet(encoded.getSecond());
         responseData.setResponseBody(encoded.getFirst());
         new DownstreamTransformer().update(responseData);
-        assertEquals(Charset.forName(encoded.getSecond()), Charset.forName(responseData.getCharSet()));
+        assertEquals(Charset.forName(TikaExtractor.decodeAs(encoded.getSecond())), Charset.forName(responseData.getCharSet()));
     }
 }
