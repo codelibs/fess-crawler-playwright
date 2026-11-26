@@ -645,7 +645,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     /**
      * Rejects a URL that carries a user name and password in front of the host ({@code http://user:password@host/}).
      *
-     * <p>The HTTP clients refuse such a URL before sending a request. The browser accepts it, so without this check
+     * <p>The default HTTP client (HC5) refuses such a URL before sending a request; the HC4 client
+     * ({@code -Dfess.crawler.http.client=hc4}) sends the userinfo as credentials. The browser accepts it, so without this check
      * the page would be fetched and indexed under a URL that quotes the password, which then appears in the search
      * results. The credentials of a site belong in the web authentication of the crawl configuration. The message
      * does not quote the userinfo.</p>
