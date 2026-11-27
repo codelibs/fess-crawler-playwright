@@ -622,8 +622,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             page = browserContext.newPage();
             // A renderer crash leaves the page permanently unusable, and without this the only symptom
             // is every later request failing with an opaque Playwright error. Log it where it happens.
-            page.onCrash(crashedPage -> logger.warn("The Playwright page crashed while loading {}. "
-                    + "The browser must be recreated before this client can be used again.", crashedPage.url()));
+            page.onCrash(crashedPage -> logger.warn(
+                    "The Playwright page crashed while loading {}. "
+                            + "The browser must be recreated before this client can be used again.",
+                    UserInfoUtil.removeUserInfo(crashedPage.url())));
             applyTimeouts(page);
             applyResourceBlocking(page);
 
@@ -736,7 +738,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 // The page can be torn down with requests still in flight, and a handler that throws
                 // would leave the request hanging until it times out instead of failing with the page.
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Could not handle the intercepted request {}", route.request().url(), e);
+                    logger.debug("Could not handle the intercepted request {}", UserInfoUtil.removeUserInfo(route.request().url()), e);
                 }
             }
         });
@@ -1207,7 +1209,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 }
 
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Loaded: Base URL: {}, Response URL: {}", url, response.url());
+                    logger.debug("Loaded: Base URL: {}, Response URL: {}", url, UserInfoUtil.removeUserInfo(response.url()));
                 }
                 // navigate() returns the response of the document it started with. When that document
                 // navigates itself away (location.replace, <meta http-equiv="refresh">) the body of that
@@ -1215,7 +1217,8 @@ public class PlaywrightClient extends AbstractCrawlerClient {
                 // index. responseRef holds the latest main-frame navigation, so a later one replaces it.
                 final Response loaded = responseRef.get() != null ? responseRef.get() : response;
                 if (loaded != response && logger.isDebugEnabled()) {
-                    logger.debug("The page navigated itself from {} to {}", response.url(), loaded.url());
+                    logger.debug("The page navigated itself from {} to {}", UserInfoUtil.removeUserInfo(response.url()),
+                            UserInfoUtil.removeUserInfo(loaded.url()));
                 }
                 return createResponseData(page, request, loaded, null);
             } finally {
@@ -1395,7 +1398,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         final Download download = downloadRef.get();
         if (response != null && download != null) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Downloaded:  URL: {}", response.url());
+                logger.debug("Downloaded:  URL: {}", UserInfoUtil.removeUserInfo(response.url()));
             }
             return createResponseData(page, request, response, download);
         }
@@ -1452,7 +1455,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
             for (final Page openedPage : page.context().pages()) {
                 if (openedPage != page && !openedPage.isClosed()) {
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Closing a page opened by the crawled document: {}", openedPage.url());
+                        logger.debug("Closing a page opened by the crawled document: {}", UserInfoUtil.removeUserInfo(openedPage.url()));
                     }
                     openedPage.close();
                 }
@@ -1474,7 +1477,7 @@ public class PlaywrightClient extends AbstractCrawlerClient {
     protected ResponseData createResponseData(final Page page, final RequestData request, final Response response,
             final Download download) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Creating ResponseData for URL: {}", response.url());
+            logger.debug("Creating ResponseData for URL: {}", UserInfoUtil.removeUserInfo(response.url()));
         }
 
         final ResponseData responseData = new ResponseData();
@@ -1484,6 +1487,10 @@ public class PlaywrightClient extends AbstractCrawlerClient {
         // download.url() is the URL the bytes were actually fetched from. Record and filter on that one.
         final String url = download != null ? download.url() : response.url();
         if (!originalUrl.equals(url)) {
+            // The browser follows a redirect by itself, so a Location that carries a user name and password
+            // reaches this point although the requested URL passed rejectUserInfo(). Refuse it here as well,
+            // before the URL is logged or becomes the URL of the document.
+            rejectUserInfo(url);
             final CrawlerContext context = CrawlingParameterUtil.getCrawlerContext();
             if (context != null) {
                 final UrlFilter urlFilter = context.getUrlFilter();
